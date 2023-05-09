@@ -1,4 +1,5 @@
-# master-thesis-2023-reinforcement-learning-in-grids
+# Master Thesis - Decoupling the Electric Vehicle Routing Problem: A Reinforcement Learning Approach
+
 
 
 # (Deep) Reinforcement learning for grid network planning
