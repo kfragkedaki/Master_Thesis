@@ -9,6 +9,12 @@ from nets.graph_encoder import GraphAttentionEncoder
 from torch.nn import DataParallel
 from utils.beam_search import CachedLookup
 from utils.functions import sample_many
+from datetime import datetime
+
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+
+writer = SummaryWriter(log_dir="logs/plots/" + datetime.now().strftime("%Y%m%d-%H%M%S"))
 
 
 def set_decode_type(model, decode_type):
@@ -145,6 +151,34 @@ class AttentionModel(nn.Module):
             embeddings, _ = checkpoint(self.embedder, self._init_embed(input))
         else:
             embeddings, _ = self.embedder(self._init_embed(input))
+
+        # if not self.opts.no_tensorboard:
+        input_distance = (input[0, :, None, :] - input[0, None, :, :]).norm(p=2, dim=-1)  #only the first instance in the batch_size
+        embeddings_distance = (embeddings[0, :, None, :] - embeddings[0, None, :, :]).norm(p=2, dim=-1)
+        #
+        # input_distance_np = ((input_distance - input_distance.min())/ (input_distance.max() - input_distance.min())).detach().numpy()
+        # embeddings_distance_np = ((embeddings_distance - embeddings_distance.min())/ (embeddings_distance.max() - embeddings_distance.min())).detach().numpy()
+        fig, axs = plt.subplots(1, 2, layout='constrained')
+
+        # Create the heatmap
+        img1 = axs[0].imshow(input_distance.detach().numpy(), cmap='hot', interpolation='nearest')
+        axs[0].set_title('input_distance_np')
+
+        # Create the heatmap
+        img2 = axs[1].imshow(embeddings_distance.detach().numpy(), cmap='hot',  interpolation='nearest')
+        axs[1].set_title('embeddings_distance_np')
+        fig.colorbar(img2, shrink=0.6)
+        plt.show()
+        # Add an extra dimension for the color channel and duplicate the tensor
+        # input_distance_3d = torch.stack([input_distance] * 3)
+
+        # Log the tensor as an image
+        # writer.add_image('input_distance', input_distance_3d, dataformats='CHW')
+
+        # Create a test image (a 10x10 white image)
+        # test_image = torch.ones(3, 10, 10)
+        # writer.add_image('test_image', test_image, dataformats='CHW')
+        # writer.close()
 
         _log_p, pi = self._inner(input, embeddings)
 
