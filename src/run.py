@@ -6,6 +6,7 @@ import pprint as pp
 
 import torch
 import torch.optim as optim
+from tensorboard_logger import Logger as TbLogger
 
 from options import get_options
 from train import train_epoch, validate, get_inner_model
@@ -22,9 +23,14 @@ def run(opts):
     # Set the random seed
     torch.manual_seed(opts.seed)
 
+    # Optionally configure tensorboard
+    tb_logger = None
+    if not opts.no_tensorboard:
+        tb_logger = TbLogger(os.path.join(opts.log_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name))
+
     os.makedirs(opts.save_dir)
     # Save arguments so exact configuration can always be found
-    with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
+    with open(os.path.join(opts.save_dir, "args.json"), 'w') as f:
         json.dump(vars(opts), f, indent=True)
 
     # Set the device
@@ -35,7 +41,7 @@ def run(opts):
     # Figure out what's the problem
     problem = load_problem(opts.problem)
 
-    # Load data from load_path
+     # Load data from load_path
     load_data = {}
     assert (
         opts.load_path is None or opts.resume is None
@@ -144,9 +150,18 @@ def run(opts):
                 epoch,
                 val_dataset,
                 problem,
+                tb_logger,
                 opts,
             )
 
 
 if __name__ == "__main__":
     run(get_options())
+
+    # first_input = inputs[0]
+    # output = model(first_input.unsqueeze(0))
+    # plt.figure()
+    # plt.plot(first_input.numpy(), label='Input')
+    # plt.plot(output.detach().numpy(), label='Output')
+    # plt.legend()
+    # writer.add_figure('Input vs. Output', plt.gcf(), epoch)
