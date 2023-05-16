@@ -147,7 +147,7 @@ class EVRPGraph:
                 "Trailer C": "green",
                 None: "black",
             }
-            style = {"Truck 1": "solid", "Truck 2": "dashed", None: "solid"}
+            style = {"Truck 1": "solid", "Truck 0": "dashed", None: "solid"}
 
             # chargers
             node_num_chargers = nx.get_node_attributes(self.graph, "num_chargers")
@@ -333,9 +333,9 @@ if __name__ == "__main__":
     # add edges that where visited
     edges = [
         (0, 3, "Truck 1", "Trailer B", 1),
-        (0, 3, "Truck 2", None, 2),
+        (0, 3, "Truck 0", None, 2),
         (3, 2, "Truck 1", "Trailer A", 3),
-        (3, 2, "Truck 2", "Trailer C", 4),
+        (3, 2, "Truck 0", "Trailer C", 4),
     ]
 
     G.visit_edge(edges)

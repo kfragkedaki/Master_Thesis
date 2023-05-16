@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 
 def load_problem(name):
-    from problems import TSP
+    from src.problems import TSP
 
     problem = {
         "tsp": TSP,
@@ -72,7 +72,7 @@ def load_args(filename):
 
 
 def load_model(path, epoch=None):
-    from nets.attention_model import AttentionModel
+    from src.nets.attention_model import AttentionModel
 
     if os.path.isfile(path):
         model_filename = path
