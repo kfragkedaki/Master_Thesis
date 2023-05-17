@@ -35,6 +35,7 @@ class MultiHeadAttention(nn.Module):
         self.W_val = nn.Parameter(torch.Tensor(n_heads, input_dim, val_dim))
 
         self.W_out = nn.Parameter(torch.Tensor(n_heads, val_dim, embed_dim))
+        self.attention_weights = None
 
         self.init_parameters()
 
@@ -87,6 +88,7 @@ class MultiHeadAttention(nn.Module):
             compatibility[mask] = -np.inf
 
         attn = torch.softmax(compatibility, dim=-1)
+        self.attention_weights = attn.clone()
 
         # If there are nodes with no neighbours then softmax returns nan so we fix them to 0
         if mask is not None:
@@ -113,6 +115,9 @@ class MultiHeadAttention(nn.Module):
         # out = torch.einsum('hbni,hij->bnj', heads, self.W_out)
 
         return out
+
+    def get_attention_weights(self):
+        return self.attention_weights
 
 
 class Normalization(nn.Module):

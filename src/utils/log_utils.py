@@ -13,20 +13,24 @@ logdir = "logs/plots/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 writer = SummaryWriter(log_dir=logdir)
 
 
-def plot_heatmaps(figures, step=0, title="Heatmap Figures"):
+def plot_encoder_data(figures, step=0, title="Heatmap Figures"):
     fig, axs = plt.subplots(1, len(figures), layout="constrained")
 
     # Create the heatmap
     img = None
     for index, (name, figure) in enumerate(figures.items()):
         img = axs[index].imshow(
-            figure, cmap="hot", interpolation="nearest"
+            figure, cmap="coolwarm", interpolation="nearest"
         )
         axs[index].set_title(name + ' ' + str(step))
 
+        # Add text annotations to show the heatmap values
+        for i in range(figure.shape[0]):
+            for j in range(figure.shape[1]):
+                text = axs[index].text(j, i, f'{figure[i, j]:.2f}', ha='center', va='center', color='white', fontsize=6)
+
     fig.colorbar(img, shrink=0.6)
 
-    # # Convert the figure to an image
     # Convert the figure to a numpy array
     fig.canvas.draw()
     image = np.array(fig.canvas.renderer.buffer_rgba())
@@ -37,7 +41,51 @@ def plot_heatmaps(figures, step=0, title="Heatmap Figures"):
     # Write the image to TensorBoard
     writer.add_image(title, image_tensor, global_step=step)
 
-    plt.show()
+    plt.close(fig)
+
+
+def plot_attention_weights(model, step=0):
+    for layer_idx in range(model.n_encode_layers):
+        attention_layer = model.embedder.layers[layer_idx][0].module
+        # First instance of the batch
+        att = attention_layer.get_attention_weights()[:, 0, :, :].detach().cpu().numpy()
+
+        # Plot the attention weights
+        fig, axs = plt.subplots(2, 4, figsize=(16, 8))
+        fig.suptitle(f'Layer {layer_idx + 1} Attention Weights', fontsize=16)
+
+        for head in range(attention_layer.n_heads):
+            ax = axs[head // 4, head % 4]
+            heatmap = ax.imshow(att[head], cmap='coolwarm', interpolation='nearest')
+
+            # Set axis labels and title
+            ax.set_xlabel('To Node', fontsize=12)
+            ax.set_ylabel('From Node', fontsize=12)
+            ax.set_title(f'Attention Head {head + 1})', fontsize=12)
+
+            # Add text annotations to show the attention weight values
+            for i in range(att[head].shape[0]):
+                for j in range(att[head].shape[1]):
+                    text = ax.text(j, i, f'{att[head][i, j]:.2f}', ha='center', va='center', color='white', fontsize=8)
+
+        # Adjust spacing between subplots
+        plt.subplots_adjust(wspace=0.3, hspace=0.3)
+
+        # Add colorbar for reference
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # Position of the colorbar
+        cbar = plt.colorbar(heatmap, cax=cbar_ax)
+        cbar.set_label('Attention Weight', fontsize=12)
+
+        # Convert the figure to a numpy array
+        fig.canvas.draw()
+        image = np.array(fig.canvas.renderer.buffer_rgba())
+
+        # Convert the image to a torch tensor
+        image_tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
+
+        # Log the figure as an image in TensorBoard
+        writer.add_image(f'Layer {layer_idx + 1}/Attention Weights', image_tensor, global_step=step)
+        plt.close(fig)
 
 
 def log_values(
@@ -80,7 +128,7 @@ def log_values(
 
         # Log the weights for each encoder layer
         for layer_idx in range(model.n_encode_layers):
-            encoder_layer = model.embedder.layers._modules[str(layer_idx)]
+            encoder_layer = model.embedder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():
                 writer.add_histogram(
                     f"Encoder Layer {layer_idx + 1}/{name}",
@@ -111,8 +159,10 @@ def log_values(
                 cosine_similarity(model.encoder_data['embeddings'][0].numpy()))
         }
 
-        plot_heatmaps(encoder_distance, step)
-        plot_heatmaps(encoder_cosine, step, title="Heatmap Figures 2")
+        plot_encoder_data(encoder_distance, step)
+        # plot_heatmaps(encoder_cosine, step, title="Heatmap Figures 2")
+
+        plot_attention_weights(model, step)
 
 
 # # Create the heatmap
