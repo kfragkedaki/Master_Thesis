@@ -26,11 +26,17 @@ def run(opts):
     # Optionally configure tensorboard
     tb_logger = None
     if not opts.no_tensorboard:
-        tb_logger = TbLogger(os.path.join(opts.log_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name))
+        tb_logger = TbLogger(
+            os.path.join(
+                opts.log_dir,
+                "{}_{}".format(opts.problem, opts.graph_size),
+                opts.run_name,
+            )
+        )
 
     os.makedirs(opts.save_dir)
     # Save arguments so exact configuration can always be found
-    with open(os.path.join(opts.save_dir, "args.json"), 'w') as f:
+    with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
         json.dump(vars(opts), f, indent=True)
 
     # Set the device
@@ -41,7 +47,7 @@ def run(opts):
     # Figure out what's the problem
     problem = load_problem(opts.problem)
 
-     # Load data from load_path
+    # Load data from load_path
     load_data = {}
     assert (
         opts.load_path is None or opts.resume is None
