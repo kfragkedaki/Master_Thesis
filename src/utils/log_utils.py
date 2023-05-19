@@ -14,15 +14,21 @@ def plot_encoder_data(figures, tb_logger, step=0, title="Heatmap Figures"):
     # Create the heatmap
     img = None
     for index, (name, figure) in enumerate(figures.items()):
-        img = axs[index].imshow(
-            figure, cmap="coolwarm", interpolation="nearest"
-        )
-        axs[index].set_title(name + ' ' + str(step))
+        img = axs[index].imshow(figure, cmap="coolwarm", interpolation="nearest")
+        axs[index].set_title(name + " " + str(step))
 
         # Add text annotations to show the heatmap values
         for i in range(figure.shape[0]):
             for j in range(figure.shape[1]):
-                text = axs[index].text(j, i, f'{figure[i, j]:.2f}', ha='center', va='center', color='white', fontsize=6)
+                text = axs[index].text(
+                    j,
+                    i,
+                    f"{figure[i, j]:.2f}",
+                    ha="center",
+                    va="center",
+                    color="white",
+                    fontsize=6,
+                )
 
     fig.colorbar(img, shrink=0.6)
 
@@ -34,7 +40,7 @@ def plot_encoder_data(figures, tb_logger, step=0, title="Heatmap Figures"):
     image_tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
 
     # Write the image to TensorBoard
-    tb_logger['writer'].add_image(title, image_tensor, global_step=step)
+    tb_logger["writer"].add_image(title, image_tensor, global_step=step)
 
     plt.close(fig)
 
@@ -47,21 +53,29 @@ def plot_attention_weights(model, tb_logger, step=0):
 
         # Plot the attention weights
         fig, axs = plt.subplots(2, 4, figsize=(16, 8))
-        fig.suptitle(f'Layer {layer_idx + 1} Attention Weights', fontsize=16)
+        fig.suptitle(f"Layer {layer_idx + 1} Attention Weights", fontsize=16)
 
         for head in range(attention_layer.n_heads):
             ax = axs[head // 4, head % 4]
-            heatmap = ax.imshow(att[head], cmap='coolwarm', interpolation='nearest')
+            heatmap = ax.imshow(att[head], cmap="coolwarm", interpolation="nearest")
 
             # Set axis labels and title
-            ax.set_xlabel('To Node', fontsize=12)
-            ax.set_ylabel('From Node', fontsize=12)
-            ax.set_title(f'Attention Head {head + 1})', fontsize=12)
+            ax.set_xlabel("To Node", fontsize=12)
+            ax.set_ylabel("From Node", fontsize=12)
+            ax.set_title(f"Attention Head {head + 1})", fontsize=12)
 
             # Add text annotations to show the attention weight values
             for i in range(att[head].shape[0]):
                 for j in range(att[head].shape[1]):
-                    text = ax.text(j, i, f'{att[head][i, j]:.2f}', ha='center', va='center', color='white', fontsize=8)
+                    text = ax.text(
+                        j,
+                        i,
+                        f"{att[head][i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        color="white",
+                        fontsize=8,
+                    )
 
         # Adjust spacing between subplots
         plt.subplots_adjust(wspace=0.3, hspace=0.3)
@@ -69,7 +83,7 @@ def plot_attention_weights(model, tb_logger, step=0):
         # Add colorbar for reference
         cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # Position of the colorbar
         cbar = plt.colorbar(heatmap, cax=cbar_ax)
-        cbar.set_label('Attention Weight', fontsize=12)
+        cbar.set_label("Attention Weight", fontsize=12)
 
         # Convert the figure to a numpy array
         fig.canvas.draw()
@@ -79,7 +93,9 @@ def plot_attention_weights(model, tb_logger, step=0):
         image_tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
 
         # Log the figure as an image in TensorBoard
-        tb_logger['writer'].add_image(f'Layer {layer_idx + 1}/Attention Weights', image_tensor, global_step=step)
+        tb_logger["writer"].add_image(
+            f"Layer {layer_idx + 1}/Attention Weights", image_tensor, global_step=step
+        )
         plt.close(fig)
 
 
@@ -108,24 +124,26 @@ def log_values(
 
     # Log values to tensorboard
     if not opts.no_tensorboard:
-        tb_logger['logger'].log_value("avg_cost", avg_cost, step)
+        tb_logger["logger"].log_value("avg_cost", avg_cost, step)
 
-        tb_logger['logger'].log_value("actor_loss", reinforce_loss.item(), step)
-        tb_logger['logger'].log_value("nll", -log_likelihood.mean().item(), step)
+        tb_logger["logger"].log_value("actor_loss", reinforce_loss.item(), step)
+        tb_logger["logger"].log_value("nll", -log_likelihood.mean().item(), step)
 
-        tb_logger['logger'].log_value("grad_norm", grad_norms[0], step)
-        tb_logger['logger'].log_value("grad_norm_clipped", grad_norms_clipped[0], step)
+        tb_logger["logger"].log_value("grad_norm", grad_norms[0], step)
+        tb_logger["logger"].log_value("grad_norm_clipped", grad_norms_clipped[0], step)
 
         if opts.baseline == "critic":
-            tb_logger['logger'].log_value("critic_loss", bl_loss.item(), step)
-            tb_logger['logger'].log_value("critic_grad_norm", grad_norms[1], step)
-            tb_logger['logger'].log_value("critic_grad_norm_clipped", grad_norms_clipped[1], step)
+            tb_logger["logger"].log_value("critic_loss", bl_loss.item(), step)
+            tb_logger["logger"].log_value("critic_grad_norm", grad_norms[1], step)
+            tb_logger["logger"].log_value(
+                "critic_grad_norm_clipped", grad_norms_clipped[1], step
+            )
 
         # Log the weights for each encoder layer
         for layer_idx in range(model.n_encode_layers):
             encoder_layer = model.embedder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():
-                tb_logger['writer'].add_histogram(
+                tb_logger["writer"].add_histogram(
                     f"Encoder Layer {layer_idx + 1}/{name}",
                     param.clone().cpu().data.numpy(),
                     epoch,
@@ -134,24 +152,30 @@ def log_values(
         # Log the weights of the model
         for name, param in model.named_parameters():
             if "embedder" not in name:
-                tb_logger['writer'].add_histogram(
+                tb_logger["writer"].add_histogram(
                     f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
                 )
 
         encoder_distance = {
-            'input_distance': (model.encoder_data['input'][0, :, None, :] - model.encoder_data['input'][0, None, :, :]).norm(p=2, dim=-1),
-            'embedding_distance': (
-                        model.encoder_data['embeddings'][0, :, None, :] - model.encoder_data['embeddings'][0, None, :, :]).norm(p=2,
-                                                                                                                  dim=-1)
+            "input_distance": (
+                model.encoder_data["input"][0, :, None, :]
+                - model.encoder_data["input"][0, None, :, :]
+            ).norm(p=2, dim=-1),
+            "embedding_distance": (
+                model.encoder_data["embeddings"][0, :, None, :]
+                - model.encoder_data["embeddings"][0, None, :, :]
+            ).norm(p=2, dim=-1),
         }
 
         # Compute cosine similarity between embeddings
         # only the first instance in the batch_size
         encoder_cosine = {
-            'input_cos': torch.from_numpy(
-                cosine_similarity(model.encoder_data['input'][0].numpy())),
-            'embeddings_cos': torch.from_numpy(
-                cosine_similarity(model.encoder_data['embeddings'][0].numpy()))
+            "input_cos": torch.from_numpy(
+                cosine_similarity(model.encoder_data["input"][0].numpy())
+            ),
+            "embeddings_cos": torch.from_numpy(
+                cosine_similarity(model.encoder_data["embeddings"][0].numpy())
+            ),
         }
 
         plot_encoder_data(encoder_distance, tb_logger, step)

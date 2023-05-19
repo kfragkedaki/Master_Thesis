@@ -4,7 +4,7 @@ import json
 import torch.nn.functional as F
 
 
-def load_problem(name):
+def load_env(name):
     from src.problems import TSP
 
     problem = {

@@ -29,13 +29,13 @@ def get_options(args=None):
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=512*25,
+        default=512 * 25,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=1024*2,
+        default=1024 * 2,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(
@@ -198,7 +198,7 @@ def get_options(args=None):
     # Configure outputs dir
     os.makedirs(opts.save_dir)
 
-    with open(opts.save_dir + '/results', "w+", newline="") as file:
+    with open(opts.save_dir + "/results", "w+", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["Model", "Seed", "Mean Distance"])
 
@@ -210,9 +210,9 @@ def get_options(args=None):
     use_cuda = torch.cuda.is_available() and not opts.no_cuda
     use_mps = torch.backends.mps.is_available() and not opts.no_cuda and False
 
-    opts.dataParallel = use_cuda and torch.cuda.device_count() > 1 or (use_mps and torch.has_mps)
-    opts.device = torch.device(
-        "cuda:0" if use_cuda else "mps:0" if use_mps else "cpu"
+    opts.device = torch.device("cuda:0" if use_cuda else "mps:0" if use_mps else "cpu")
+    opts.dataParallel = (
+        use_cuda and torch.cuda.device_count() > 1 or (use_mps and torch.has_mps)
     )
 
     assert (opts.bl_warmup_epochs == 0) or (opts.baseline == "rollout")

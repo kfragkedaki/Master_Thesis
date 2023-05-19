@@ -10,7 +10,7 @@ from options import get_options
 from train import train_epoch, validate, get_inner_model
 from reinforce_baselines import NoBaseline, ExponentialBaseline, RolloutBaseline
 from nets.attention_model import AttentionModel
-from utils import torch_load_cpu, load_problem
+from utils import torch_load_cpu, load_env
 from tensorboard_logger import Logger as TbLogger
 from torch.utils.tensorboard import SummaryWriter
 
@@ -23,29 +23,28 @@ def run(opts):
     # Set the random seed
     torch.manual_seed(opts.seed)
 
-    # Optionally configure tensorboard
+    # Optionally configure tensorboard logger and writer
     tb_logger = {
-        'logger': None if opts.no_tensorboard else TbLogger(opts.save_dir + '/logs'),
-        'writer': None if opts.no_tensorboard else SummaryWriter(opts.save_dir + '/plots')
+        "logger": None if opts.no_tensorboard else TbLogger(opts.save_dir + "/logs"),
+        "writer": None
+        if opts.no_tensorboard
+        else SummaryWriter(opts.save_dir + "/plots"),
     }
 
     # Initialize the Environment
-    problem = load_problem(opts.problem)
+    env = load_env(opts.problem)
 
     # Load data from load_path
-    load_data = {}
     assert (
         opts.load_path is None or opts.resume is None
     ), "Only one of load path and resume can be given"
     load_path = opts.load_path if opts.load_path is not None else opts.resume
-    if load_path is not None:
-        print("  [*] Loading data from {}".format(load_path))
-        load_data = torch_load_cpu(load_path)
+    load_data = {} if load_path is None else torch_load_cpu(load_path)
 
     model = AttentionModel(
         opts.embedding_dim,
         opts.hidden_dim,
-        problem,
+        env,
         n_encode_layers=opts.n_encode_layers,
         mask_inner=True,
         mask_logits=True,
@@ -55,7 +54,7 @@ def run(opts):
         shrink_size=opts.shrink_size,
     ).to(opts.device)
 
-    if (opts.dataParallel):
+    if opts.dataParallel:
         model = torch.nn.DataParallel(model)
 
     # Overwrite model parameters by parameters to load
@@ -66,7 +65,7 @@ def run(opts):
     if opts.baseline == "exponential":
         baseline = ExponentialBaseline(opts.exp_beta)
     elif opts.baseline == "rollout":
-        baseline = RolloutBaseline(model, problem, opts)
+        baseline = RolloutBaseline(model, env, opts)
     else:
         assert opts.baseline is None, "Unknown baseline: {}".format(opts.baseline)
         baseline = NoBaseline()
@@ -100,7 +99,7 @@ def run(opts):
     )
 
     # Start the actual training loop
-    val_dataset = problem.make_dataset(
+    val_dataset = env.make_dataset(
         size=opts.graph_size,
         num_samples=opts.val_size,
         filename=opts.val_dataset,
@@ -132,7 +131,7 @@ def run(opts):
                 lr_scheduler,
                 epoch,
                 val_dataset,
-                problem,
+                env,
                 tb_logger,
                 opts,
             )

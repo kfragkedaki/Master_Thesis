@@ -147,8 +147,8 @@ class AttentionModel(nn.Module):
         else:
             embeddings, _ = self.embedder(self._init_embed(input))
 
-        self.encoder_data['input'] = input.cpu().detach()
-        self.encoder_data['embeddings'] = embeddings.cpu().detach()
+        self.encoder_data["input"] = input.cpu().detach()
+        self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
         _log_p, pi = self._inner(input, embeddings)
 
