@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 
 import os
-import json
 import pprint as pp
 
 import torch
 import torch.optim as optim
-from tensorboard_logger import Logger as TbLogger
 
 from options import get_options
 from train import train_epoch, validate, get_inner_model
 from reinforce_baselines import NoBaseline, ExponentialBaseline, RolloutBaseline
 from nets.attention_model import AttentionModel
 from utils import torch_load_cpu, load_problem
+from tensorboard_logger import Logger as TbLogger
+from torch.utils.tensorboard import SummaryWriter
 
 
 def run(opts):
@@ -24,27 +24,12 @@ def run(opts):
     torch.manual_seed(opts.seed)
 
     # Optionally configure tensorboard
-    tb_logger = None
-    if not opts.no_tensorboard:
-        tb_logger = TbLogger(
-            os.path.join(
-                opts.log_dir,
-                "{}_{}".format(opts.problem, opts.graph_size),
-                opts.run_name,
-            )
-        )
+    tb_logger = {
+        'logger': None if opts.no_tensorboard else TbLogger(opts.save_dir + '/logs'),
+        'writer': None if opts.no_tensorboard else SummaryWriter(opts.save_dir + '/plots')
+    }
 
-    os.makedirs(opts.save_dir)
-    # Save arguments so exact configuration can always be found
-    with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
-        json.dump(vars(opts), f, indent=True)
-
-    # Set the device
-    opts.device = torch.device(
-        "cuda:0" if opts.use_cuda else "mps:0" if opts.use_mps else "cpu"
-    )
-
-    # Figure out what's the problem
+    # Initialize the Environment
     problem = load_problem(opts.problem)
 
     # Load data from load_path
@@ -57,11 +42,7 @@ def run(opts):
         print("  [*] Loading data from {}".format(load_path))
         load_data = torch_load_cpu(load_path)
 
-    # Initialize model
-    model_class = {"attention": AttentionModel}.get(opts.model, None)
-    assert model_class is not None, "Unknown model: {}".format(model_class)
-
-    model = model_class(
+    model = AttentionModel(
         opts.embedding_dim,
         opts.hidden_dim,
         problem,
@@ -74,11 +55,7 @@ def run(opts):
         shrink_size=opts.shrink_size,
     ).to(opts.device)
 
-    if (
-        opts.use_cuda
-        and torch.cuda.device_count() > 1
-        or (opts.use_mps and torch.has_mps)
-    ):
+    if (opts.dataParallel):
         model = torch.nn.DataParallel(model)
 
     # Overwrite model parameters by parameters to load

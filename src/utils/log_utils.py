@@ -1,19 +1,14 @@
-from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from datetime import datetime
 import torch
 
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
 
-logdir = "logs/plots/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-writer = SummaryWriter(log_dir=logdir)
 
-
-def plot_encoder_data(figures, step=0, title="Heatmap Figures"):
+def plot_encoder_data(figures, tb_logger, step=0, title="Heatmap Figures"):
     fig, axs = plt.subplots(1, len(figures), layout="constrained")
 
     # Create the heatmap
@@ -39,12 +34,12 @@ def plot_encoder_data(figures, step=0, title="Heatmap Figures"):
     image_tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
 
     # Write the image to TensorBoard
-    writer.add_image(title, image_tensor, global_step=step)
+    tb_logger['writer'].add_image(title, image_tensor, global_step=step)
 
     plt.close(fig)
 
 
-def plot_attention_weights(model, step=0):
+def plot_attention_weights(model, tb_logger, step=0):
     for layer_idx in range(model.n_encode_layers):
         attention_layer = model.embedder.layers[layer_idx][0].module
         # First instance of the batch
@@ -84,7 +79,7 @@ def plot_attention_weights(model, step=0):
         image_tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
 
         # Log the figure as an image in TensorBoard
-        writer.add_image(f'Layer {layer_idx + 1}/Attention Weights', image_tensor, global_step=step)
+        tb_logger['writer'].add_image(f'Layer {layer_idx + 1}/Attention Weights', image_tensor, global_step=step)
         plt.close(fig)
 
 
@@ -113,24 +108,24 @@ def log_values(
 
     # Log values to tensorboard
     if not opts.no_tensorboard:
-        tb_logger.log_value("avg_cost", avg_cost, step)
+        tb_logger['logger'].log_value("avg_cost", avg_cost, step)
 
-        tb_logger.log_value("actor_loss", reinforce_loss.item(), step)
-        tb_logger.log_value("nll", -log_likelihood.mean().item(), step)
+        tb_logger['logger'].log_value("actor_loss", reinforce_loss.item(), step)
+        tb_logger['logger'].log_value("nll", -log_likelihood.mean().item(), step)
 
-        tb_logger.log_value("grad_norm", grad_norms[0], step)
-        tb_logger.log_value("grad_norm_clipped", grad_norms_clipped[0], step)
+        tb_logger['logger'].log_value("grad_norm", grad_norms[0], step)
+        tb_logger['logger'].log_value("grad_norm_clipped", grad_norms_clipped[0], step)
 
         if opts.baseline == "critic":
-            tb_logger.log_value("critic_loss", bl_loss.item(), step)
-            tb_logger.log_value("critic_grad_norm", grad_norms[1], step)
-            tb_logger.log_value("critic_grad_norm_clipped", grad_norms_clipped[1], step)
+            tb_logger['logger'].log_value("critic_loss", bl_loss.item(), step)
+            tb_logger['logger'].log_value("critic_grad_norm", grad_norms[1], step)
+            tb_logger['logger'].log_value("critic_grad_norm_clipped", grad_norms_clipped[1], step)
 
         # Log the weights for each encoder layer
         for layer_idx in range(model.n_encode_layers):
             encoder_layer = model.embedder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():
-                writer.add_histogram(
+                tb_logger['writer'].add_histogram(
                     f"Encoder Layer {layer_idx + 1}/{name}",
                     param.clone().cpu().data.numpy(),
                     epoch,
@@ -139,7 +134,7 @@ def log_values(
         # Log the weights of the model
         for name, param in model.named_parameters():
             if "embedder" not in name:
-                writer.add_histogram(
+                tb_logger['writer'].add_histogram(
                     f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
                 )
 
@@ -159,10 +154,11 @@ def log_values(
                 cosine_similarity(model.encoder_data['embeddings'][0].numpy()))
         }
 
-        plot_encoder_data(encoder_distance, step)
+        plot_encoder_data(encoder_distance, tb_logger, step)
+        # plot_encoder_data({'input': model.encoder_data['input'][0], 'embeddings': model.encoder_data['embeddings'][0]}, step, title="Heatmap Figures 2")
         # plot_heatmaps(encoder_cosine, step, title="Heatmap Figures 2")
 
-        plot_attention_weights(model, step)
+        plot_attention_weights(model, tb_logger, step)
 
 
 # # Create the heatmap

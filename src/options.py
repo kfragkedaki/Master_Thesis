@@ -1,10 +1,14 @@
 import os
+import csv
+import json
 import time
 import argparse
 import torch
 
 
 def get_options(args=None):
+
+    # Initialize Config
     parser = argparse.ArgumentParser(
         description="Attention based model for solving the Travelling Salesman Problem with Reinforcement Learning"
     )
@@ -31,7 +35,7 @@ def get_options(args=None):
     parser.add_argument(
         "--val_size",
         type=int,
-        default=1024*5,
+        default=1024*2,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(
@@ -39,11 +43,6 @@ def get_options(args=None):
         type=str,
         default=None,
         help="Dataset file to use for validation",
-    )
-
-    # Model
-    parser.add_argument(
-        "--model", default="attention", help="Model, 'attention' (default) or 'pointer'"
     )
     parser.add_argument(
         "--embedding_dim", type=int, default=128, help="Dimension of input embedding"
@@ -112,7 +111,7 @@ def get_options(args=None):
     parser.add_argument(
         "--baseline",
         default="rollout",
-        help="Baseline to use: 'rollout', 'critic' or 'exponential'. Defaults to no baseline.",
+        help="Baseline to use: 'rollout' or 'exponential'. Defaults to no baseline.",
     )
     parser.add_argument(
         "--bl_alpha",
@@ -157,12 +156,7 @@ def get_options(args=None):
         "--log_step", type=int, default=5, help="Log info every log_step steps"
     )
     parser.add_argument(
-        "--log_dir",
-        default="logs",
-        help="Directory to write TensorBoard information to",
-    )
-    parser.add_argument(
-        "--run_name", default="tsp10_rollout", help="Name to identify the run"
+        "--run_name", default="rollout", help="Name to identify the run"
     )
     parser.add_argument(
         "--output_dir", default="outputs", help="Directory to write output models to"
@@ -193,18 +187,37 @@ def get_options(args=None):
     )
 
     opts = parser.parse_args(args)
-
-    opts.use_cuda = torch.cuda.is_available() and not opts.no_cuda
-    opts.use_mps = torch.backends.mps.is_available() and not opts.no_cuda and False
-
     opts.run_name = "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
     opts.save_dir = os.path.join(
         opts.output_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name
     )
+
     if opts.bl_warmup_epochs is None:
         opts.bl_warmup_epochs = 1 if opts.baseline == "rollout" else 0
+
+    # Configure outputs dir
+    os.makedirs(opts.save_dir)
+
+    with open(opts.save_dir + '/results', "w+", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Model", "Seed", "Mean Distance"])
+
+    # Save arguments so exact configuration can always be found
+    with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
+        json.dump(vars(opts), f, indent=True)
+
+    # Set the device
+    use_cuda = torch.cuda.is_available() and not opts.no_cuda
+    use_mps = torch.backends.mps.is_available() and not opts.no_cuda and False
+
+    opts.dataParallel = use_cuda and torch.cuda.device_count() > 1 or (use_mps and torch.has_mps)
+    opts.device = torch.device(
+        "cuda:0" if use_cuda else "mps:0" if use_mps else "cpu"
+    )
+
     assert (opts.bl_warmup_epochs == 0) or (opts.baseline == "rollout")
     assert (
         opts.epoch_size % opts.batch_size == 0
     ), "Epoch size must be integer multiple of batch size!"
+
     return opts
