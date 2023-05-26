@@ -1,47 +1,45 @@
 from typing import List
 
-from .evrp_graph import EVRPGraph
+from .tsp_graph import Graph
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-class EVRPNetwork:
+class Network:
     def __init__(
         self,
         num_graphs: int,
         num_nodes: int,
-        num_trucks: int,
-        num_trailers: int,
-        plot_attributes: bool = False,
-    ) -> List[EVRPGraph]:
+        num_depots: int,
+        plot_demand: bool = False,
+    ) -> List[Graph]:
         """
         Creates num_graphs random generated fully connected
         graphs with num_nodes nodes. Node positions are
-        sampled uniformly in [0, 1].
+        sampled uniformly in [0, 1]. In each graph
+        num_debots nodes are marked as depots.
 
         Args:
             num_graphs (int): Number of graphs to generate.
             num_nodes (int): Number of nodes in each graph.
-            num_trucks (int): Number of trucks in each graph.
-            num_trailers (int): Number of trailers in each graph.
+            num_depots (int): Number of depots in each graph.
 
         Returns:
-            List[EVRPGraph]: List of num_graphs networkx graphs
+            List[Graph]: List of num_graphs networkx graphs
         """
 
-        self.num_nodes = num_nodes
-        self.num_graphs = num_graphs
-        self.num_trucks = num_trucks
-        self.num_trailers = num_trailers
-        self.graphs: List[EVRPGraph] = []
+        assert (
+            num_nodes >= num_depots
+        ), "Number of depots should be lower than number of depots"
 
-        # generate a graph with nn nodes, nt trailers, ntr trucks
+        self.num_nodes = num_nodes
+        self.num_depots = num_depots
+        self.num_graphs = num_graphs
+        self.graphs: List[Graph] = []
+
+        # generate a graph with nn nodes and nd depots
         for _ in range(num_graphs):
-            self.graphs.append(
-                EVRPGraph(
-                    num_nodes, num_trailers, num_trucks, plot_attributes=plot_attributes
-                )
-            )
+            self.graphs.append(Graph(num_nodes, num_depots, plot_demand=plot_demand))
 
     def get_distance(self, graph_idx: int, node_idx_1: int, node_idx_2: int) -> float:
         """
@@ -79,19 +77,35 @@ class EVRPNetwork:
             ]
         )
 
-    def get_num_chargers(self) -> np.ndarray:
+    def get_depots(self) -> np.ndarray:
         """
-        Returns the num_chargers for each node in each graph.
+        Get the depots of every graph within the network.
 
         Returns:
-            np.ndarray: Number of chargers of each node in shape
+            np.ndarray: Returns nd.array of shape
+                (num_graphs, num_depots).
+        """
+
+        depos_idx = np.zeros((self.num_graphs, self.num_depots), dtype=int)
+
+        for i in range(self.num_graphs):
+            depos_idx[i] = self.graphs[i].depots
+
+        return depos_idx
+
+    def get_demands(self) -> np.ndarray:
+        """
+        Returns the demands for each node in each graph.
+
+        Returns:
+            np.ndarray: Demands of each node in shape
                 (num_graphs, num_nodes, 1)
         """
-        chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        demands = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
         for i in range(self.num_graphs):
-            chargers[i] = self.graphs[i]._num_chargers
+            demands[i] = self.graphs[i].demand
 
-        return chargers
+        return demands
 
     def draw(self, graph_idxs: np.ndarray) -> None:
         """
@@ -150,25 +164,12 @@ class EVRPNetwork:
 
         node_positions = np.zeros(shape=(len(self.graphs), self.num_nodes, 2))
         for i, graph in enumerate(self.graphs):
-            node_positions[i] = graph._node_positions
+            node_positions[i] = graph.node_positions
 
         return node_positions
 
+    def __len__(self):
+        return self.num_graphs
 
-if __name__ == "__main__":
-    fig, ax = plt.subplots()
-    G = EVRPNetwork(
-        num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True
-    )
-
-    # add edges that where visited
-    edges = [
-        (0, 3, "Truck 1", "Trailer B", 1),
-        (0, 3, "Truck 0", None, 2),
-        (3, 2, "Truck 1", "Trailer A", 3),
-        (3, 2, "Truck 0", "Trailer C", 4),
-    ]
-
-    G.visit_edges(edges)
-
-    G.draw(ax=ax, with_labels=True)
+    def __getitem__(self, idx):
+        return self.graphs[idx]

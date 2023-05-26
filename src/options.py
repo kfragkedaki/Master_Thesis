@@ -138,13 +138,6 @@ def get_options(args=None):
         help="Set to decrease memory usage by checkpointing encoder",
     )
     parser.add_argument(
-        "--shrink_size",
-        type=int,
-        default=None,
-        help="Shrink the batch size if at least this many instances in the batch are finished"
-        " to save memory (default None means no shrinking)",
-    )
-    parser.add_argument(
         "--data_distribution",
         type=str,
         default=None,

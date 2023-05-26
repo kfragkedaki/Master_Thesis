@@ -14,15 +14,22 @@ class SkipConnection(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        num_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: int = None,
+        key_dim: int = None,
+    ):
         super(MultiHeadAttention, self).__init__()
 
         if val_dim is None:
-            val_dim = embed_dim // n_heads
+            val_dim = embed_dim // num_heads
         if key_dim is None:
             key_dim = val_dim
 
-        self.n_heads = n_heads
+        self.num_heads = num_heads
         self.input_dim = input_dim
         self.embed_dim = embed_dim
         self.val_dim = val_dim
@@ -30,11 +37,11 @@ class MultiHeadAttention(nn.Module):
 
         self.norm_factor = 1 / math.sqrt(key_dim)  # See Attention is all you need
 
-        self.W_query = nn.Parameter(torch.Tensor(n_heads, input_dim, key_dim))
-        self.W_key = nn.Parameter(torch.Tensor(n_heads, input_dim, key_dim))
-        self.W_val = nn.Parameter(torch.Tensor(n_heads, input_dim, val_dim))
+        self.W_query = nn.Parameter(torch.Tensor(num_heads, input_dim, key_dim))
+        self.W_key = nn.Parameter(torch.Tensor(num_heads, input_dim, key_dim))
+        self.W_val = nn.Parameter(torch.Tensor(num_heads, input_dim, val_dim))
 
-        self.W_out = nn.Parameter(torch.Tensor(n_heads, val_dim, embed_dim))
+        self.W_out = nn.Parameter(torch.Tensor(num_heads, val_dim, embed_dim))
         self.attention_weights = None
 
         self.init_parameters()
@@ -68,16 +75,16 @@ class MultiHeadAttention(nn.Module):
         qflat = q.contiguous().view(-1, input_dim)
 
         # last dimension can be different for keys and values
-        shp = (self.n_heads, batch_size, graph_size, -1)
-        shp_q = (self.n_heads, batch_size, n_query, -1)
+        shp = (self.num_heads, batch_size, graph_size, -1)
+        shp_q = (self.num_heads, batch_size, n_query, -1)
 
-        # Calculate queries, (n_heads, n_query, graph_size, key/val_size)
+        # Calculate queries, (num_heads, n_query, graph_size, key/val_size)
         Q = torch.matmul(qflat, self.W_query).view(shp_q)
-        # Calculate keys and values (n_heads, batch_size, graph_size, key/val_size)
+        # Calculate keys and values (num_heads, batch_size, graph_size, key/val_size)
         K = torch.matmul(hflat, self.W_key).view(shp)
         V = torch.matmul(hflat, self.W_val).view(shp)
 
-        # Calculate compatibility (n_heads, batch_size, n_query, graph_size)
+        # Calculate compatibility (num_heads, batch_size, n_query, graph_size)
         compatibility = self.norm_factor * torch.matmul(Q, K.transpose(2, 3))
 
         # Optionally apply mask to prevent attention
@@ -101,18 +108,9 @@ class MultiHeadAttention(nn.Module):
         out = torch.mm(
             heads.permute(1, 2, 0, 3)
             .contiguous()
-            .view(-1, self.n_heads * self.val_dim),
+            .view(-1, self.num_heads * self.val_dim),
             self.W_out.view(-1, self.embed_dim),
         ).view(batch_size, n_query, self.embed_dim)
-
-        # Alternative:
-        # headst = heads.transpose(0, 1)  # swap the dimensions for batch and heads to align it for the matmul
-        # # proj_h = torch.einsum('bhni,hij->bhnj', headst, self.W_out)
-        # projected_heads = torch.matmul(headst, self.W_out)
-        # out = torch.sum(projected_heads, dim=1)  # sum across heads
-
-        # Or:
-        # out = torch.einsum('hbni,hij->bnj', heads, self.W_out)
 
         return out
 
@@ -155,14 +153,14 @@ class Normalization(nn.Module):
 class MultiHeadAttentionLayer(nn.Sequential):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        feed_forward_hidden=512,
-        normalization="batch",
+        num_heads: int,
+        embed_dim: int,
+        feed_forward_hidden: int,
+        normalization: str = "batch",
     ):
         super(MultiHeadAttentionLayer, self).__init__(
             SkipConnection(
-                MultiHeadAttention(n_heads, input_dim=embed_dim, embed_dim=embed_dim)
+                MultiHeadAttention(num_heads, input_dim=embed_dim, embed_dim=embed_dim)
             ),
             Normalization(embed_dim, normalization),
             SkipConnection(
@@ -181,43 +179,48 @@ class MultiHeadAttentionLayer(nn.Sequential):
 class GraphAttentionEncoder(nn.Module):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        n_layers,
-        node_dim=None,
-        normalization="batch",
-        feed_forward_hidden=512,
+        embed_dim: int = 128,
+        num_attention_layers: int = 3,
+        num_heads: int = 8,
+        node_input_dim: int = None,
+        feed_forward_hidden: int = 512,
+        normalization: str = "batch",
+        features: tuple = (),
     ):
         super(GraphAttentionEncoder, self).__init__()
 
+        self.features = features
         # To map input to embedding space
-        self.init_embed = (
-            nn.Linear(node_dim, embed_dim) if node_dim is not None else None
-        )
+        self.init_embed_node = nn.Linear(node_input_dim, embed_dim)
 
         self.layers = nn.Sequential(
             *(
                 MultiHeadAttentionLayer(
-                    n_heads, embed_dim, feed_forward_hidden, normalization
+                    num_heads, embed_dim, feed_forward_hidden, normalization
                 )
-                for _ in range(n_layers)
+                for _ in range(num_attention_layers)
             )
         )
 
-    def forward(self, x, mask=None):
-
-        assert mask is None, "TODO mask not yet supported!"
+    def forward(self, x):
 
         # Batch multiply to get initial embeddings of nodes
-        h = (
-            self.init_embed(x.view(-1, x.size(-1))).view(*x.size()[:2], -1)
-            if self.init_embed is not None
-            else x
-        )
+        out = self._init_embed(x)
+        out = self.layers(out)
 
-        h = self.layers(h)
+        return out  # (batch_size, graph_size, embed_dim)
 
-        return (
-            h,  # (batch_size, graph_size, embed_dim)
-            h.mean(dim=1),  # average to get embedding of graph, (batch_size, embed_dim)
-        )
+    def _init_embed(self, input):
+        if len(self.features) > 0:
+            return self.init_embed_node(
+                torch.cat(
+                    (
+                        input["loc"],
+                        *(input[feat][:, :, None] for feat in self.features),
+                    ),
+                    -1,
+                )
+            )
+
+        return self.init_embed_node(input)
+

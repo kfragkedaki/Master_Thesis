@@ -33,6 +33,7 @@ def run(opts):
 
     # Initialize the Environment
     env = load_env(opts.problem)
+    # env = load_env("tsp2")
 
     # Load data from load_path
     assert (
@@ -41,17 +42,16 @@ def run(opts):
     load_path = opts.load_path if opts.load_path is not None else opts.resume
     load_data = {} if load_path is None else torch_load_cpu(load_path)
 
+    # baseline_model {
     model = AttentionModel(
-        opts.embedding_dim,
-        opts.hidden_dim,
-        env,
+        embedding_dim=opts.embedding_dim,
+        problem=env,
         n_encode_layers=opts.n_encode_layers,
         mask_inner=True,
         mask_logits=True,
         normalization=opts.normalization,
         tanh_clipping=opts.tanh_clipping,
         checkpoint_encoder=opts.checkpoint_encoder,
-        shrink_size=opts.shrink_size,
     ).to(opts.device)
 
     if opts.dataParallel:
@@ -73,6 +73,8 @@ def run(opts):
     # Load baseline from data, make sure script is called with same type of baseline
     if "baseline" in load_data:
         baseline.load_state_dict(load_data["baseline"])
+
+    # }
 
     # Initialize optimizer
     optimizer = optim.Adam(
@@ -139,11 +141,3 @@ def run(opts):
 
 if __name__ == "__main__":
     run(get_options())
-
-    # first_input = inputs[0]
-    # output = model(first_input.unsqueeze(0))
-    # plt.figure()
-    # plt.plot(first_input.numpy(), label='Input')
-    # plt.plot(output.detach().numpy(), label='Output')
-    # plt.legend()
-    # writer.add_figure('Input vs. Output', plt.gcf(), epoch)

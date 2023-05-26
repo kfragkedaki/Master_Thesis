@@ -6,9 +6,11 @@ import torch.nn.functional as F
 
 def load_env(name):
     from src.problems import TSP
+    from src.env import TSPEnv
 
     problem = {
         "tsp": TSP,
+        "tsp2": TSPEnv,
         # 'evrp': EVRP,
     }.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
@@ -86,7 +88,7 @@ def load_model(path, epoch=None):
 
     args = load_args(os.path.join(path, "args.json"))
 
-    problem = load_problem(args["problem"])
+    problem = load_env(args["problem"])
 
     model_class = {"attention": AttentionModel}.get(
         args.get("model", "attention"), None
@@ -94,20 +96,18 @@ def load_model(path, epoch=None):
     assert model_class is not None, "Unknown model: {}".format(model_class)
 
     model = model_class(
-        args["embedding_dim"],
-        args["hidden_dim"],
-        problem,
+        embedding_dim=args["embedding_dim"],
+        problem=problem,
         n_encode_layers=args["n_encode_layers"],
         mask_inner=True,
         mask_logits=True,
         normalization=args["normalization"],
         tanh_clipping=args["tanh_clipping"],
         checkpoint_encoder=args.get("checkpoint_encoder", False),
-        shrink_size=args.get("shrink_size", None),
     )
     # Overwrite model parameters by parameters to load
     load_data = torch_load_cpu(model_filename)
-    model.load_state_dict({**model.state_dict(), **load_data.get("model", {})})
+    model.load_state_dict({**model.state_dict(), **load_data.get("model", {})}) 
 
     model, *_ = _load_model_file(model_filename, model)
 

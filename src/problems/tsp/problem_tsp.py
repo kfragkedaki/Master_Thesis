@@ -4,6 +4,7 @@ import os
 import pickle
 from src.problems.tsp.state_tsp import StateTSP
 from src.utils.beam_search import beam_search
+from src.graph.tsp_network import Network
 
 
 class TSP(object):
@@ -24,11 +25,14 @@ class TSP(object):
         # Length is distance (L2-norm of difference) from each next location from its prev and of last from first
         return (d[:, 1:] - d[:, :-1]).norm(p=2, dim=2).sum(1) + (
             d[:, 0] - d[:, -1]
-        ).norm(p=2, dim=1), None
+        ).norm(p=2, dim=1), None  # np.linalg.norm(node_one_pos - node_two_pos) ?get_distances(self, paths)?
 
     @staticmethod
     def make_dataset(*args, **kwargs):
         return TSPDataset(*args, **kwargs)
+        # return Network(
+        #     num_graphs=kwargs['num_samples'], num_nodes=kwargs['size'], num_depots=1,
+        # )
 
     @staticmethod
     def make_state(*args, **kwargs):
@@ -83,7 +87,10 @@ class TSPDataset(Dataset):
         else:
             # Sample points randomly in [0, 1] square
             self.data = [
-                torch.FloatTensor(size, 2).uniform_(0, 1) for i in range(num_samples)
+                {
+                    'loc': torch.FloatTensor(size, 2).uniform_(0, 1),
+                }
+                for i in range(num_samples)
             ]
 
         self.size = len(self.data)

@@ -47,7 +47,7 @@ def plot_encoder_data(figures, tb_logger, step=0, title="Heatmap Figures"):
 
 def plot_attention_weights(model, tb_logger, step=0):
     for layer_idx in range(model.n_encode_layers):
-        attention_layer = model.embedder.layers[layer_idx][0].module
+        attention_layer = model.encoder.layers[layer_idx][0].module
         # First instance of the batch
         att = attention_layer.get_attention_weights()[:, 0, :, :].detach().cpu().numpy()
 
@@ -55,7 +55,7 @@ def plot_attention_weights(model, tb_logger, step=0):
         fig, axs = plt.subplots(2, 4, figsize=(16, 8))
         fig.suptitle(f"Layer {layer_idx + 1} Attention Weights", fontsize=16)
 
-        for head in range(attention_layer.n_heads):
+        for head in range(attention_layer.num_heads):
             ax = axs[head // 4, head % 4]
             heatmap = ax.imshow(att[head], cmap="coolwarm", interpolation="nearest")
 
@@ -141,7 +141,7 @@ def log_values(
 
         # Log the weights for each encoder layer
         for layer_idx in range(model.n_encode_layers):
-            encoder_layer = model.embedder.layers[layer_idx]
+            encoder_layer = model.encoder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():
                 tb_logger["writer"].add_histogram(
                     f"Encoder Layer {layer_idx + 1}/{name}",
@@ -151,7 +151,7 @@ def log_values(
 
         # Log the weights of the model
         for name, param in model.named_parameters():
-            if "embedder" not in name:
+            if "encoder" not in name:
                 tb_logger["writer"].add_histogram(
                     f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
                 )
@@ -178,11 +178,11 @@ def log_values(
             ),
         }
 
-        plot_encoder_data(encoder_distance, tb_logger, step)
+        plot_encoder_data(encoder_distance, tb_logger, epoch)
         # plot_encoder_data({'input': model.encoder_data['input'][0], 'embeddings': model.encoder_data['embeddings'][0]}, step, title="Heatmap Figures 2")
         # plot_heatmaps(encoder_cosine, step, title="Heatmap Figures 2")
 
-        plot_attention_weights(model, tb_logger, step)
+        plot_attention_weights(model, tb_logger, epoch)
 
 
 # # Create the heatmap
