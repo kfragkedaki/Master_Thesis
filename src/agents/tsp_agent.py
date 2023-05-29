@@ -29,7 +29,7 @@ class TSPAgent:
 
         # Load data from load_path
         assert (
-                opts.load_path is None or opts.resume is None
+            opts.load_path is None or opts.resume is None
         ), "Only one of load path and resume can be given"
         load_path = opts.load_path if opts.load_path is not None else opts.resume
         self.load_data = {} if load_path is None else torch_load_cpu(load_path)
@@ -45,7 +45,9 @@ class TSPAgent:
             checkpoint_encoder=opts.checkpoint_encoder,
         ).to(opts.device)
 
-        self.baseline_model = get_baseline_model(self.model, self.env, self.opts, self.load_data)
+        self.baseline_model = get_baseline_model(
+            self.model, self.env, self.opts, self.load_data
+        )
 
         self.optimizer = torch.optim.Adam(
             [{"params": self.model.parameters(), "lr": opts.lr_model}]
@@ -61,12 +63,14 @@ class TSPAgent:
 
         # Initialize learning rate scheduler, decay by lr_decay once per epoch!
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lambda epoch: opts.lr_decay ** epoch
+            self.optimizer, lambda epoch: opts.lr_decay**epoch
         )
 
         # Optionally configure tensorboard logger and writer
         self.tb_logger = {
-            "logger": None if opts.no_tensorboard else TbLogger(opts.save_dir + "/logs"),
+            "logger": None
+            if opts.no_tensorboard
+            else TbLogger(opts.save_dir + "/logs"),
             "writer": None
             if opts.no_tensorboard
             else SummaryWriter(opts.save_dir + "/plots"),
@@ -113,7 +117,9 @@ class TSPAgent:
         if self.opts.eval_only:
             validate(self.model, val_dataset, self.opts)
         else:
-            for epoch in range(self.opts.epoch_start, self.opts.epoch_start + self.opts.n_epochs):
+            for epoch in range(
+                self.opts.epoch_start, self.opts.epoch_start + self.opts.n_epochs
+            ):
                 train_epoch(
                     self.model,
                     self.optimizer,

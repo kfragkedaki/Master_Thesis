@@ -223,4 +223,3 @@ class GraphAttentionEncoder(nn.Module):
             )
 
         return self.init_embed_node(input)
-

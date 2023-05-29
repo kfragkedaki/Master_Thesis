@@ -3,12 +3,14 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 import math
 from typing import NamedTuple
+
 # from src.utils.tensor_functions import compute_in_batches
 
 from .graph_encoder import GraphAttentionEncoder
 from .graph_decoder import GraphDecoder
 from torch.nn import DataParallel
 from src.utils.beam_search import CachedLookup
+
 # from src.utils.functions import sample_many
 
 
@@ -112,7 +114,7 @@ class AttentionModel(nn.Module):
         if return_pi:
             return cost, acc_log_prob, pi
 
-        return cost, acc_log_prob # tensor(batch_size) both
+        return cost, acc_log_prob  # tensor(batch_size) both
 
     def node_select(self, input, embeddings):
 
@@ -127,7 +129,9 @@ class AttentionModel(nn.Module):
         i = 0
         while not state.all_finished():
 
-            selected, log_p = self.decoder(fixed, state, temp=self.temp, decode_type=self.decode_type)
+            selected, log_p = self.decoder(
+                fixed, state, temp=self.temp, decode_type=self.decode_type
+            )
             state = state.update(selected)
 
             # Collect output of step
@@ -137,7 +141,9 @@ class AttentionModel(nn.Module):
             i += 1
 
         # Collected lists, return Tensor
-        return torch.stack(outputs, 1), torch.stack(sequences, 1) # (batch_size, i, graph size) and (batch_size, graph size)
+        return torch.stack(outputs, 1), torch.stack(
+            sequences, 1
+        )  # (batch_size, i, graph size) and (batch_size, graph size)
 
     def _calc_log_likelihood(self, _log_p, a, mask):
 
@@ -240,7 +246,7 @@ class AttentionModel(nn.Module):
 
         elif self.is_tsp:
             self.step_context_dim = (
-                    2 * embedding_dim
+                2 * embedding_dim
             )  # Embedding of first and last node
             self.node_dim = 2  # x, y
             self.features = ()

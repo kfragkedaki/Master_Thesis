@@ -141,7 +141,7 @@ def log_values(
             )
 
         # Log the weights for each encoder layer
-        model_ = get_inner_model(model) #model.module if isinstance(model, DataParallel) else model
+        model_ = get_inner_model(model)
         for layer_idx in range(model_.n_encode_layers):
             encoder_layer = model_.encoder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():

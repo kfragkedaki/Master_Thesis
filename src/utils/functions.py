@@ -20,6 +20,7 @@ def load_env(name: str):
 
 def load_agent(name: str):
     from src.agents.tsp_agent import TSPAgent
+
     # from src.agents.evrp_agent import EVRPAgent
 
     agent = {
@@ -125,7 +126,7 @@ def load_model(path, epoch=None):
     )
     # Overwrite model parameters by parameters to load
     load_data = torch_load_cpu(model_filename)
-    model.load_state_dict({**model.state_dict(), **load_data.get("model", {})}) 
+    model.load_state_dict({**model.state_dict(), **load_data.get("model", {})})
 
     model, *_ = _load_model_file(model_filename, model)
 
@@ -194,7 +195,9 @@ def get_baseline_model(model, env, opts, load_data):
         baseline_model = NoBaseline()
 
     if opts.bl_warmup_epochs > 0:
-        baseline_model = WarmupBaseline(baseline_model, opts.bl_warmup_epochs, warmup_exp_beta=opts.exp_beta)
+        baseline_model = WarmupBaseline(
+            baseline_model, opts.bl_warmup_epochs, warmup_exp_beta=opts.exp_beta
+        )
 
     # Load baseline from data, make sure script is called with same type of baseline
     if "baseline" in load_data:

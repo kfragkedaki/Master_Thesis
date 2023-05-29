@@ -18,7 +18,7 @@ class GraphDecoder(nn.Module):
         temp: int = 1,
         mask_inner: bool = True,
         mask_logits: bool = True,
-        W_placeholder: torch.ParameterDict = None
+        W_placeholder: torch.ParameterDict = None,
     ):
         """
         Args:
@@ -35,9 +35,7 @@ class GraphDecoder(nn.Module):
         self.num_heads = num_heads
         self.temp = temp
 
-        self.project_step_context = nn.Linear(
-            step_context_dim, embed_dim, bias=False
-        )
+        self.project_step_context = nn.Linear(step_context_dim, embed_dim, bias=False)
         assert embed_dim % num_heads == 0
         # Note num_heads * val_dim == embedding_dim so input to project_out is embedding_dim
         self.project_out = nn.Linear(embed_dim, embed_dim, bias=False)
@@ -48,7 +46,7 @@ class GraphDecoder(nn.Module):
         state: any,
         normalize=True,
         decode_type: str = None,
-        temp:int = 1,
+        temp: int = 1,
     ):
         """
         Forward method of the Decoder
@@ -72,7 +70,9 @@ class GraphDecoder(nn.Module):
         )
 
         # Compute keys and values for the nodes
-        glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed_attention, state)
+        glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(
+            fixed_attention, state
+        )
 
         # Compute the mask
         mask = state.get_mask()
