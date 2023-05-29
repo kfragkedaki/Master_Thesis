@@ -6,6 +6,7 @@ import torch
 
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
+from src.utils.functions import get_inner_model
 
 
 def plot_encoder_data(figures, tb_logger, step=0, title="Heatmap Figures"):
@@ -140,8 +141,9 @@ def log_values(
             )
 
         # Log the weights for each encoder layer
-        for layer_idx in range(model.n_encode_layers):
-            encoder_layer = model.encoder.layers[layer_idx]
+        model_ = get_inner_model(model) #model.module if isinstance(model, DataParallel) else model
+        for layer_idx in range(model_.n_encode_layers):
+            encoder_layer = model_.encoder.layers[layer_idx]
             for name, param in encoder_layer.named_parameters():
                 tb_logger["writer"].add_histogram(
                     f"Encoder Layer {layer_idx + 1}/{name}",
@@ -150,7 +152,7 @@ def log_values(
                 )
 
         # Log the weights of the model
-        for name, param in model.named_parameters():
+        for name, param in model_.named_parameters():
             if "encoder" not in name:
                 tb_logger["writer"].add_histogram(
                     f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
@@ -158,12 +160,12 @@ def log_values(
 
         encoder_distance = {
             "input_distance": (
-                model.encoder_data["input"][0, :, None, :]
-                - model.encoder_data["input"][0, None, :, :]
+                model_.encoder_data["input"][0, :, None, :]
+                - model_.encoder_data["input"][0, None, :, :]
             ).norm(p=2, dim=-1),
             "embedding_distance": (
-                model.encoder_data["embeddings"][0, :, None, :]
-                - model.encoder_data["embeddings"][0, None, :, :]
+                model_.encoder_data["embeddings"][0, :, None, :]
+                - model_.encoder_data["embeddings"][0, None, :, :]
             ).norm(p=2, dim=-1),
         }
 
@@ -171,10 +173,10 @@ def log_values(
         # only the first instance in the batch_size
         encoder_cosine = {
             "input_cos": torch.from_numpy(
-                cosine_similarity(model.encoder_data["input"][0].numpy())
+                cosine_similarity(model_.encoder_data["input"][0].numpy())
             ),
             "embeddings_cos": torch.from_numpy(
-                cosine_similarity(model.encoder_data["embeddings"][0].numpy())
+                cosine_similarity(model_.encoder_data["embeddings"][0].numpy())
             ),
         }
 
@@ -182,7 +184,7 @@ def log_values(
         # plot_encoder_data({'input': model.encoder_data['input'][0], 'embeddings': model.encoder_data['embeddings'][0]}, step, title="Heatmap Figures 2")
         # plot_heatmaps(encoder_cosine, step, title="Heatmap Figures 2")
 
-        plot_attention_weights(model, tb_logger, epoch)
+        plot_attention_weights(model_, tb_logger, epoch)
 
 
 # # Create the heatmap

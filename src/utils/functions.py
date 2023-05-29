@@ -2,9 +2,10 @@ import torch
 import os
 import json
 import torch.nn.functional as F
+from torch.nn import DataParallel
 
 
-def load_env(name):
+def load_env(name: str):
     from src.problems import TSP
     from src.env import TSPEnv
 
@@ -17,10 +18,27 @@ def load_env(name):
     return problem
 
 
+def load_agent(name: str):
+    from src.agents.tsp_agent import TSPAgent
+    # from src.agents.evrp_agent import EVRPAgent
+
+    agent = {
+        "tsp": TSPAgent,
+        # 'evrp': EVRP,
+    }.get(name, None)
+
+    assert agent is not None, "Currently unsupported agent: {}!".format(name)
+    return agent
+
+
 def move_to(var, device):
     if isinstance(var, dict):
         return {k: move_to(v, device) for k, v in var.items()}
     return var.to(device)
+
+
+def get_inner_model(model):
+    return model.module if isinstance(model, DataParallel) else model
 
 
 def torch_load_cpu(load_path):
@@ -157,3 +175,29 @@ def sample_many(inner_func, get_cost_func, input, batch_rep=1, iter_rep=1):
     minpis = pis[torch.arange(pis.size(0), out=argmincosts.new()), argmincosts]
 
     return minpis, mincosts
+
+
+def set_decode_type(model, decode_type):
+    if isinstance(model, DataParallel):
+        model = model.module
+    model.set_decode_type(decode_type)
+
+
+def get_baseline_model(model, env, opts, load_data):
+    from src.nets.reinforce_baselines import NoBaseline, WarmupBaseline, RolloutBaseline
+
+    # Initialize baseline
+    if opts.baseline == "rollout":
+        baseline_model = RolloutBaseline(model, env, opts)
+    else:
+        assert opts.baseline is None, "Unknown baseline: {}".format(opts.baseline)
+        baseline_model = NoBaseline()
+
+    if opts.bl_warmup_epochs > 0:
+        baseline_model = WarmupBaseline(baseline_model, opts.bl_warmup_epochs, warmup_exp_beta=opts.exp_beta)
+
+    # Load baseline from data, make sure script is called with same type of baseline
+    if "baseline" in load_data:
+        baseline_model.load_state_dict(load_data["baseline"])
+
+    return baseline_model

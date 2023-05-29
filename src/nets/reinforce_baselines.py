@@ -3,7 +3,8 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from scipy.stats import ttest_rel
 import copy
-from train import rollout, get_inner_model
+from src.agents.train import rollout
+from src.utils import get_inner_model
 
 
 class Baseline(object):
@@ -140,10 +141,10 @@ class CriticBaseline(Baseline):
 
 
 class RolloutBaseline(Baseline):
-    def __init__(self, model, problem, opts, epoch=0):
+    def __init__(self, model, env, opts, epoch=0):
         super(Baseline, self).__init__()
 
-        self.problem = problem
+        self.env = env
         self.opts = opts
 
         self._update_model(model, epoch)
@@ -151,14 +152,14 @@ class RolloutBaseline(Baseline):
     def _update_model(self, model, epoch, dataset=None):
         self.model = copy.deepcopy(model)
         # Always generate baseline dataset when updating model to prevent overfitting to the baseline dataset
-
+        # assert dataset is not None, "No dataset provided"
         if dataset is not None:
             if len(dataset) != self.opts.val_size:
                 print(
                     "Warning: not using saved baseline dataset since val_size does not match"
                 )
                 dataset = None
-            elif (dataset[0] if self.problem.NAME == "tsp" else dataset[0]["loc"]).size(
+            elif (dataset[0] if self.env.NAME == "tsp" else dataset[0]["loc"]).size(
                 0
             ) != self.opts.graph_size:
                 print(
@@ -167,7 +168,7 @@ class RolloutBaseline(Baseline):
                 dataset = None
 
         if dataset is None:
-            self.dataset = self.problem.make_dataset(
+            self.dataset = self.env.make_dataset(
                 size=self.opts.graph_size,
                 num_samples=self.opts.val_size,
                 distribution=self.opts.data_distribution,

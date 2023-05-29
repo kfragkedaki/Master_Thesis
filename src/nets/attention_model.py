@@ -3,19 +3,13 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 import math
 from typing import NamedTuple
-from src.utils.tensor_functions import compute_in_batches
+# from src.utils.tensor_functions import compute_in_batches
 
 from .graph_encoder import GraphAttentionEncoder
 from .graph_decoder import GraphDecoder
 from torch.nn import DataParallel
 from src.utils.beam_search import CachedLookup
-from src.utils.functions import sample_many
-
-
-def set_decode_type(model, decode_type):
-    if isinstance(model, DataParallel):
-        model = model.module
-    model.set_decode_type(decode_type)
+# from src.utils.functions import sample_many
 
 
 class AttentionModelFixed(NamedTuple):
@@ -106,21 +100,21 @@ class AttentionModel(nn.Module):
         else:
             embeddings = self.encoder(input)
 
-        self.encoder_data["input"] = input #.cpu().detach()
+        self.encoder_data["input"] = input.cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
-        _log_p, pi = self._inner(input, embeddings)
+        _log_p, pi = self.node_select(input, embeddings)
 
         cost, mask = self.problem.get_costs(input, pi)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
-        ll = self._calc_log_likelihood(_log_p, pi, mask)
+        acc_log_prob = self._calc_log_likelihood(_log_p, pi, mask)
         if return_pi:
-            return cost, ll, pi
+            return cost, acc_log_prob, pi
 
-        return cost, ll
+        return cost, acc_log_prob # tensor(batch_size) both
 
-    def _inner(self, input, embeddings):
+    def node_select(self, input, embeddings):
 
         outputs = []
         sequences = []
@@ -143,7 +137,7 @@ class AttentionModel(nn.Module):
             i += 1
 
         # Collected lists, return Tensor
-        return torch.stack(outputs, 1), torch.stack(sequences, 1)
+        return torch.stack(outputs, 1), torch.stack(sequences, 1) # (batch_size, i, graph size) and (batch_size, graph size)
 
     def _calc_log_likelihood(self, _log_p, a, mask):
 
