@@ -77,6 +77,7 @@ class EVRPGraph:
                 "destination_node": destination,
                 "start_time": np.round(start_time, 2),
                 "end_time": start_time + time_frame,
+                "status": "Available"
             }
 
         # set trucks
@@ -288,9 +289,47 @@ class EVRPGraph:
             )
 
     @property
-    def _num_chargers(self) -> np.ndarray:
-        positions = nx.get_node_attributes(self.graph, "num_chargers").values()
+    def _node_chargers(self) -> np.ndarray:
+        chargers = nx.get_node_attributes(self.graph, "num_chargers").values()
+        return np.asarray(list(chargers))
+
+    @property
+    def _node_avail_chargers(self) -> np.ndarray:
+        available_chargers = nx.get_node_attributes(self.graph, "available_chargers").values()
+        return np.asarray(list(available_chargers))
+
+    @property
+    def _node_positions(self) -> np.ndarray:
+        """
+        Returns the coordinates of each node as
+        an ndarray of shape (num_nodes, 2) sorted
+        by the node index.
+        """
+
+        positions = nx.get_node_attributes(self.graph, "coordinates").values()
         return np.asarray(list(positions))
+
+    @property
+    def _node_trailers(self) -> np.ndarray:
+        """
+        Returns trailers of each node as
+        an ndarray of shape (num_nodes, 1) sorted
+        by the node index.
+        """
+
+        trailers = nx.get_node_attributes(self.graph, "trailers").values()
+        return np.asarray(list(trailers))
+
+    @property
+    def _node_trucks(self) -> np.ndarray:
+        """
+        Returns trucks of each node as
+        an ndarray of shape (num_nodes, 2) sorted
+        by the node index.
+        """
+
+        trucks = nx.get_node_attributes(self.graph, "trucks").values()
+        return np.asarray(list(trucks))
 
     @property
     def _edges(self):
@@ -303,17 +342,6 @@ class EVRPGraph:
     @property
     def _graph(self):
         return self.graph
-
-    @property
-    def _node_positions(self) -> np.ndarray:
-        """
-        Returns the coordinates of each node as
-        an ndarray of shape (num_nodes, 2) sorted
-        by the node index.
-        """
-
-        positions = nx.get_node_attributes(self.graph, "coordinates").values()
-        return np.asarray(list(positions))
 
     def euclid_distance(self, node1_idx: int, node2_idx: int) -> float:
         """

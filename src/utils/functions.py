@@ -6,12 +6,12 @@ from torch.nn import DataParallel
 
 
 def load_env(name: str):
-    from src.problems import TSP, CVRP
+    from src.problems import TSP, CVRP, EVRP
 
     problem = {
         "tsp": TSP,
         "cvrp": CVRP,
-        # 'evrp': EVRP,
+        'evrp': EVRP,
     }.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
     return problem
@@ -23,7 +23,7 @@ def load_attention_model(name: str):
     model = {
         "tsp": AttentionTSPModel,
         "cvrp": AttentionVRPModel,
-        # 'evrp': AttentionEVRPModel,
+        'evrp': AttentionEVRPModel,
     }.get(name, None)
     assert model is not None, "Currently unsupported problem: {}!".format(name)
     return model

@@ -3,18 +3,25 @@ from typing import NamedTuple
 from src.utils.boolmask import mask_long2bool, mask_long_scatter
 
 
-class StateTSP(NamedTuple):
+class StateEVRP(NamedTuple):
     # Fixed input
-    loc: torch.Tensor
-    dist: torch.Tensor
+    coords: torch.Tensor
+
+    # TODO Maybe not to use that but update via the graph networkx library? Seems more effective
+    available_chargers: torch.Tensor # Keeps the available chargers per node
+    node_trucks: torch.Tensor # Keeps the trucks per node TODO Should I keep only the charged trucks?
+    node_trailers:  torch.Tensor # Keeps the trailers per node TODO Should I keep only the charged trucks?
 
     # If this state contains multiple copies (i.e. beam search) for the same instance, then for memory efficiency
-    # the loc and dist tensors are not kept multiple times, so we need to use the ids to index the correct rows.
+    # the coords and dist tensors are not kept multiple times, so we need to use the ids to index the correct rows.
     ids: torch.Tensor  # Keeps track of original fixed data index of rows
+    truck: torch.Tensor  # number of trucks
+    trailer: torch.Tensor  # number of trailers
 
     # State
-    first_a: torch.Tensor
-    prev_a: torch.Tensor
+    from_loc: torch.Tensor
+    to_loc: torch.Tensor
+    destination: torch.Tensor
     visited_: torch.Tensor  # Keeps track of nodes that have been visited
     lengths: torch.Tensor
     cur_coord: torch.Tensor
@@ -22,66 +29,81 @@ class StateTSP(NamedTuple):
 
     @property
     def visited(self):
-        if self.visited_.dtype == torch.uint8:
-            return self.visited_
-        else:
-            return mask_long2bool(self.visited_, n=self.loc.size(-2))
+        pass
+        # if self.visited_.dtype == torch.uint8:
+        #     return self.visited_
+        # else:
+        #     return mask_long2bool(self.visited_, n=self.coords.size(-2))
 
     def __getitem__(self, key):
         assert torch.is_tensor(key) or isinstance(
             key, slice
         )  # If tensor, idx all tensors by this tensor:
+
         return self._replace(
+            available_chargers=self.available_chargers[key],
+            num_trucks=self.num_trucks[key],
             ids=self.ids[key],
-            first_a=self.first_a[key],
-            prev_a=self.prev_a[key],
+            truck=self.truck[key],
+            trailer=self.trailer[key],
+            from_loc=self.from_loc[key],
+            to_loc=self.to_loc[key],
+            destination=self.destination[key],
             visited_=self.visited_[key],
             lengths=self.lengths[key],
             cur_coord=self.cur_coord[key] if self.cur_coord is not None else None,
         )
 
     @staticmethod
-    def initialize(loc, visited_dtype=torch.uint8):
+    def initialize(input, visited_dtype=torch.uint8):
 
-        batch_size, n_loc, _ = loc.size()
-        prev_a = torch.zeros(batch_size, 1, dtype=torch.long, device=loc.device)
-        return StateTSP(
-            loc=loc,
-            dist=(loc[:, :, None, :] - loc[:, None, :, :]).norm(p=2, dim=-1),
-            ids=torch.arange(batch_size, dtype=torch.int64, device=loc.device)[
+        coords = input['coords']
+        available_chargers = input['available_chargers']
+        num_trucks = input['num_trucks']
+
+        batch_size, n_loc, _ = coords.size()
+        prev_a = torch.zeros(batch_size, 1, dtype=torch.long, device=coords.device)
+        return StateEVRP(
+            coords=coords,
+            available_chargers=available_chargers,
+            num_trucks=num_trucks,
+            ids=torch.arange(batch_size, dtype=torch.int64, device=coords.device)[
                 :, None
             ],  # Add steps dimension
-            first_a=prev_a,
-            prev_a=prev_a,
+            truck=None,
+            trailer=None,
+            from_loc=prev_a,
+            to_loc=prev_a,
+            destination=None,
             # Keep visited with depot so we can scatter efficiently (if there is an action for depot)
             visited_=(  # Visited as mask is easier to understand, as long more memory efficient
-                torch.zeros(batch_size, 1, n_loc, dtype=torch.uint8, device=loc.device)
+                torch.zeros(batch_size, 1, n_loc, dtype=torch.uint8, device=coords.device)
                 if visited_dtype == torch.uint8
                 else torch.zeros(
                     batch_size,
                     1,
                     (n_loc + 63) // 64,
                     dtype=torch.int64,
-                    device=loc.device,
+                    device=coords.device,
                 )  # Ceil
             ),
-            lengths=torch.zeros(batch_size, 1, device=loc.device),
+            lengths=torch.zeros(batch_size, num_trucks, device=coords.device),
             cur_coord=None,
             i=torch.zeros(
-                1, dtype=torch.int64, device=loc.device
+                1, dtype=torch.int64, device=coords.device
             ),  # Vector with length num_steps
         )
 
     def get_final_cost(self):
 
         assert self.all_finished()
-        # assert self.visited_.
 
         return self.lengths + (
-            self.loc[self.ids, self.first_a, :] - self.cur_coord
-        ).norm(p=2, dim=-1)
+            self.coords[self.ids, self.destination, :] - self.cur_coord
+        ).norm(p=2, dim=-1) # TODO fix this
 
     def update(self, selected):
+        # TODO select truck, trailer, node and update
 
         # Update the state
         prev_a = selected[:, None]  # Add dimension for step
@@ -91,7 +113,7 @@ class StateTSP(NamedTuple):
         #     1,
         #     selected[:, None, None].expand(selected.size(0), 1, self.loc.size(-1))
         # )[:, 0, :]
-        cur_coord = self.loc[self.ids, prev_a]
+        cur_coord = self.coords[self.ids, prev_a]
         lengths = self.lengths
         if (
             self.cur_coord is not None
@@ -100,7 +122,8 @@ class StateTSP(NamedTuple):
                 p=2, dim=-1
             )  # (batch_dim, 1)
 
-        # Update should only be called with just 1 parallel step, in which case we can check this way if we should update
+        # Update should only be called with just 1 parallel step,
+        # in which case we can check this way if we should update
         first_a = prev_a if self.i.item() == 0 else self.first_a
 
         if self.visited_.dtype == torch.uint8:
@@ -110,8 +133,8 @@ class StateTSP(NamedTuple):
             visited_ = mask_long_scatter(self.visited_, prev_a)
 
         return self._replace(
-            first_a=first_a,
-            prev_a=prev_a,
+            from_loc=first_a,
+            to_loc=prev_a,
             visited_=visited_,
             lengths=lengths,
             cur_coord=cur_coord,
@@ -119,16 +142,16 @@ class StateTSP(NamedTuple):
         )
 
     def all_finished(self):
-        # Exactly n steps
-        return self.i.item() >= self.loc.size(-2)
+        # If all trailers are on their destination nodes
+        pass
 
     def get_current_node(self):
-        return self.prev_a
+        return self.to_loc
 
     def get_mask(self):
-        return (
-            self.visited > 0
-        )  # return bool or uint8 depending on pytorch version
+        # Mask the nodes that the truck cannot go to because of its battery limits
+        # Mask the nodes on Pending mode
+        pass
 
     def construct_solutions(self, actions):
         return actions

@@ -253,7 +253,8 @@ class GraphDecoderVRP(GraphDecoder):
             temp (int): temperature reduce of the learning rate
             mask_inner (bool): inner masking of the probabilities
             mask_logits (bool): mask the output probabilitiea
-            W_placeholder (Parameter): initialize the final and last node
+            W_placeholder (Parameter): None
+            problem (classmethod): parameters of the problem
         """
         super().__init__(
             embed_dim=embed_dim,
@@ -317,8 +318,39 @@ class GraphDecoderEVRP(GraphDecoder):
     Decoder Class to generate node prediction.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(
+            self,
+            embed_dim: int = 128,
+            num_heads: int = 8,
+            step_context_dim: int = 256,
+            tanh_clipping: int = 10.0,
+            temp: int = 1,
+            mask_inner: bool = True,
+            mask_logits: bool = True,
+            W_placeholder: torch.ParameterDict = None,
+    ):
+        """
+        Args:
+            embed_dim (int): Dimension of the input embedding.
+            num_heads (int): Number of attention heads.
+            step_context_dim (int): Linear Propagation of the context
+            tanh_clipping (int): clipping the logits
+            temp (int): temperature reduce of the learning rate
+            mask_inner (bool): inner masking of the probabilities
+            mask_logits (bool): mask the output probabilitiea
+            W_placeholder (Parameter): None
+            problem (classmethod): parameters of the problem
+        """
+        super().__init__(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            step_context_dim=step_context_dim,
+            tanh_clipping=tanh_clipping,
+            temp=temp,
+            mask_inner=mask_inner,
+            mask_logits=mask_logits,
+            W_placeholder=W_placeholder,
+        )
 
     def _get_attention_node_data(self, fixed, state):
         # Need to provide information of how much each node has already been served

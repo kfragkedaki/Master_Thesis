@@ -66,17 +66,6 @@ class TSP(object):
 
         return beam_search(state, beam_size, propose_expansions)
 
-
-# def make_instance(args):
-#     loc, *args = args
-#     grid_size = 1
-#     if len(args) > 0:
-#         depot_types, customer_types, grid_size = args
-#     return {
-#         "loc": torch.tensor(loc, dtype=torch.float) / grid_size,
-#     }
-
-
 class TSPDataset(Dataset):
     def __init__(
         self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
@@ -89,9 +78,6 @@ class TSPDataset(Dataset):
 
             with open(filename, "rb") as f:
                 data = pickle.load(f)
-                # self.data = [
-                #     make_instance(args) for args in data[offset : offset + num_samples]
-                # ]
                 self.data = [
                     torch.FloatTensor(row)
                     for row in (data[offset : offset + num_samples])

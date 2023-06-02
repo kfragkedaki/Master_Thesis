@@ -3,7 +3,7 @@ from typing import List
 from .evrp_graph import EVRPGraph
 import matplotlib.pyplot as plt
 import numpy as np
-
+import torch
 
 class EVRPNetwork:
     def __init__(
@@ -79,20 +79,6 @@ class EVRPNetwork:
             ]
         )
 
-    def get_num_chargers(self) -> np.ndarray:
-        """
-        Returns the num_chargers for each node in each graph.
-
-        Returns:
-            np.ndarray: Number of chargers of each node in shape
-                (num_graphs, num_nodes, 1)
-        """
-        chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
-        for i in range(self.num_graphs):
-            chargers[i] = self.graphs[i]._num_chargers
-
-        return chargers
-
     def draw(self, graph_idxs: np.ndarray) -> None:
         """
         Draw multiple graphs in a matplotlib grid.
@@ -152,7 +138,72 @@ class EVRPNetwork:
         for i, graph in enumerate(self.graphs):
             node_positions[i] = graph._node_positions
 
-        return node_positions
+        return torch.FloatTensor(node_positions)
+
+    def get_node_avail_chargers(self) -> np.ndarray:
+        """
+        Returns the available chargers for each node in each graph.
+
+        Returns:
+            np.ndarray: Number of available chargers of each node in shape
+                (num_graphs, num_nodes, 1)
+            np.ndarray: Charger availability of each node in shape
+                (num_graphs, num_nodes, 1)
+        """
+        chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        for i, graph in enumerate(self.graphs):
+            chargers[i] = graph._node_avail_chargers
+
+        avail_chargers = np.where(chargers > 0, 1., 0.)
+        return chargers, torch.FloatTensor(avail_chargers)  # values, bool
+
+    def get_node_trucks(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Returns the trucks for each node in each graph.
+
+        Returns:
+            np.ndarray: Trucks of each node in shape
+                (num_graphs, num_nodes, 1)
+            np.ndarray: Truck availability of each node in shape
+                (num_graphs, num_nodes, 1)
+        """
+        trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1), dtype=dict)
+        avail_trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+
+        for i, graph in enumerate(self.graphs):
+            trucks[i] = graph._node_trucks[:, None]
+
+            # True if available charged trucks
+            for node_index, node in enumerate(graph._node_trucks):
+                if node and any(truck.get('battery_level') == 1 for truck in node.values() if truck):
+                    avail_trucks[i, node_index] = 1
+
+        return trucks, torch.FloatTensor(avail_trucks)  # values, bool
+
+    def get_node_trailers(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Returns the trailers for each node in each graph.
+
+        Returns:
+            np.ndarray: Trailers of each node in shape
+                (num_graphs, num_nodes, 1)
+            np.ndarray: Trailer availability of each node in shape
+                (num_graphs, num_nodes, 1)
+        """
+        trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1), dtype=dict)
+        avail_trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+
+        for i, graph in enumerate(self.graphs):
+            trailers[i] = graph._node_trailers[:, None]
+
+            # True if trailer exists, and not in destination node and if status not pending
+            for node_index, trailer_node in enumerate(graph._node_trailers):
+                if trailer_node is not None:
+                    for trailer in trailer_node.values():
+                        if trailer['destination_node'] != node_index and trailer['status'] != 'Pending':
+                            avail_trailers[i, node_index] = 1
+
+        return trailers, torch.FloatTensor(avail_trailers)  # values, bool
 
 
 if __name__ == "__main__":

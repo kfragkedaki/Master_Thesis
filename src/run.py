@@ -18,8 +18,6 @@ def run(opts: dict()):
 
     # Initialize the Environment
     env = load_env(opts.problem)
-    # env = load_env("tsp2")
-
     Agent(opts, env).train()
 
 
