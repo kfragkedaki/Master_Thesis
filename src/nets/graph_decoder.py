@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
 import math
 
 
@@ -24,8 +23,12 @@ class GraphDecoder(nn.Module):
         Args:
             embed_dim (int): Dimension of the input embedding.
             num_heads (int): Number of attention heads.
-            v_dim (int): Dimension of attention value.
-            k_dim (int): Dimension of attention key.
+            step_context_dim (int): Linear Propagation of the context
+            tanh_clipping (int): clipping the logits
+            temp (int): temperature reduce of the learning rate
+            mask_inner (bool): inner masking of the probabilities
+            mask_logits (bool): mask the output probabilitiea
+            W_placeholder (Parameter): initialize the final and last node
         """
         super().__init__()
         self.tanh_clipping = tanh_clipping
@@ -165,22 +168,6 @@ class GraphDecoder(nn.Module):
 
     def _get_attention_node_data(self, fixed, state):
 
-        # if self.is_vrp and self.allow_partial:
-        #
-        #     # Need to provide information of how much each node has already been served
-        #     # Clone demands as they are needed by the backprop whereas they are updated later
-        #     glimpse_key_step, glimpse_val_step, logit_key_step = self.project_node_step(
-        #         state.demands_with_depot[:, :, :, None].clone()
-        #     ).chunk(3, dim=-1)
-        #
-        #     # Projection of concatenation is equivalent to addition of projections but this is more efficient
-        #     return (
-        #         fixed.glimpse_key + self._make_heads(glimpse_key_step),
-        #         fixed.glimpse_val + self._make_heads(glimpse_val_step),
-        #         fixed.logit_key + logit_key_step,
-        #     )
-
-        # TSP
         return fixed.glimpse_key, fixed.glimpse_val, fixed.logit_key
 
     def _get_parallel_step_context(self, embeddings, state, from_depot=False):
@@ -196,38 +183,7 @@ class GraphDecoder(nn.Module):
         current_node = state.get_current_node()
         batch_size, num_steps = current_node.size()
 
-        # if self.is_vrp:
-        #     # Embedding of previous node + remaining capacity
-        #     if from_depot:
-        #         # 1st dimension is node idx, but we do not squeeze it since we want to insert step dimension
-        #         # i.e. we actually want embeddings[:, 0, :][:, None, :] which is equivalent
-        #         return torch.cat(
-        #             (
-        #                 embeddings[:, 0:1, :].expand(
-        #                     batch_size, num_steps, embeddings.size(-1)
-        #                 ),
-        #                 # used capacity is 0 after visiting depot
-        #                 self.problem.VEHICLE_CAPACITY
-        #                 - torch.zeros_like(state.used_capacity[:, :, None]),
-        #             ),
-        #             -1,
-        #         )
-        #     else:
-        #         return torch.cat(
-        #             (
-        #                 torch.gather(
-        #                     embeddings,
-        #                     1,
-        #                     current_node.contiguous()
-        #                     .view(batch_size, num_steps, 1)
-        #                     .expand(batch_size, num_steps, embeddings.size(-1)),
-        #                 ).view(batch_size, num_steps, embeddings.size(-1)),
-        #                 self.problem.VEHICLE_CAPACITY - state.used_capacity[:, :, None],
-        #             ),
-        #             -1,
-        #         )
-        # else:  # TSP
-
+        # TSP
         if (
             num_steps == 1
         ):  # We need to special case if we have only 1 step, may be the first or not
@@ -269,3 +225,113 @@ class GraphDecoder(nn.Module):
             ),
             1,
         )
+
+
+class GraphDecoderVRP(GraphDecoder):
+    """
+    Decoder Class to generate node prediction.
+    """
+
+    def __init__(
+        self,
+        embed_dim: int = 128,
+        num_heads: int = 8,
+        step_context_dim: int = 256,
+        tanh_clipping: int = 10.0,
+        temp: int = 1,
+        mask_inner: bool = True,
+        mask_logits: bool = True,
+        W_placeholder: torch.ParameterDict = None,
+        problem: classmethod = None,
+    ):
+        """
+        Args:
+            embed_dim (int): Dimension of the input embedding.
+            num_heads (int): Number of attention heads.
+            step_context_dim (int): Linear Propagation of the context
+            tanh_clipping (int): clipping the logits
+            temp (int): temperature reduce of the learning rate
+            mask_inner (bool): inner masking of the probabilities
+            mask_logits (bool): mask the output probabilitiea
+            W_placeholder (Parameter): initialize the final and last node
+        """
+        super().__init__(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            step_context_dim=step_context_dim,
+            tanh_clipping=tanh_clipping,
+            temp=temp,
+            mask_inner=mask_inner,
+            mask_logits=mask_logits,
+            W_placeholder=W_placeholder,
+        )
+
+        self.problem = problem
+
+    def _get_parallel_step_context(self, embeddings, state, from_depot=False):
+        """
+        Returns the context per step, optionally for multiple steps at once (for efficient evaluation of the model)
+
+        :param embeddings: (batch_size, graph_size, embed_dim)
+        :param prev_a: (batch_size, num_steps)
+        :param first_a: Only used when num_steps = 1, action of first step or None if first step
+        :return: (batch_size, num_steps, context_dim)
+        """
+
+        current_node = state.get_current_node()
+        batch_size, num_steps = current_node.size()
+
+        # Embedding of previous node + remaining capacity
+        if from_depot:
+            # 1st dimension is node idx, but we do not squeeze it since we want to insert step dimension
+            # i.e. we actually want embeddings[:, 0, :][:, None, :] which is equivalent
+            return torch.cat(
+                (
+                    embeddings[:, 0:1, :].expand(
+                        batch_size, num_steps, embeddings.size(-1)
+                    ),
+                    # used capacity is 0 after visiting depot
+                    self.problem.VEHICLE_CAPACITY
+                    - torch.zeros_like(state.used_capacity[:, :, None]),
+                ),
+                -1,
+            )
+        else:
+            return torch.cat(
+                (
+                    torch.gather(
+                        embeddings,
+                        1,
+                        current_node.contiguous()
+                        .view(batch_size, num_steps, 1)
+                        .expand(batch_size, num_steps, embeddings.size(-1)),
+                    ).view(batch_size, num_steps, embeddings.size(-1)),
+                    self.problem.VEHICLE_CAPACITY - state.used_capacity[:, :, None],
+                ),
+                -1,
+            )
+
+
+class GraphDecoderEVRP(GraphDecoder):
+    """
+    Decoder Class to generate node prediction.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def _get_attention_node_data(self, fixed, state):
+        # Need to provide information of how much each node has already been served
+        # Clone demands as they are needed by the backprop whereas they are updated later
+        glimpse_key_step, glimpse_val_step, logit_key_step = self.project_node_step(
+            state.demands_with_depot[:, :, :, None].clone()
+        ).chunk(3, dim=-1)
+
+        # Projection of concatenation is equivalent to addition of projections but this is more efficient
+        return (
+            fixed.glimpse_key + self._make_heads(glimpse_key_step),
+            fixed.glimpse_val + self._make_heads(glimpse_val_step),
+            fixed.logit_key + logit_key_step,
+        )
+
+    # def _get_parallel_step_context(self, embeddings, state, from_depot=False):

@@ -4,10 +4,10 @@ import os
 import time
 from datetime import timedelta
 from scipy.spatial import distance_matrix
-from utils import run_all_in_pool
-from utils.data_utils import check_extension, load_dataset, save_dataset
+from src.utils import run_all_in_pool
+from src.utils.data_utils import check_extension, load_dataset, save_dataset
 from subprocess import check_call, check_output, CalledProcessError
-from problems.vrp.vrp_baseline import get_lkh_executable
+from src.problems.vrp.vrp_baseline import get_lkh_executable
 import torch
 from tqdm import tqdm
 import re
@@ -15,7 +15,7 @@ import re
 
 def solve_gurobi(directory, name, loc, disable_cache=False, timeout=None, gap=None):
     # Lazy import so we do not need to have gurobi installed to run this script
-    from problems.tsp.tsp_gurobi import (
+    from src.problems.tsp.tsp_gurobi import (
         solve_euclidian_tsp as solve_euclidian_tsp_gurobi,
     )
 
@@ -354,8 +354,8 @@ def solve_all_nn(
 ):
     import torch
     from torch.utils.data import DataLoader
-    from problems import TSP
-    from utils import move_to
+    from src.problems import TSP
+    from src.utils import move_to
 
     dataloader = DataLoader(
         TSP.make_dataset(

@@ -9,9 +9,6 @@
 # tours that don't visit every city.  The lazy constraint callback
 # adds new constraints to cut them off.
 
-import argparse
-import numpy as np
-from utils.data_utils import load_dataset, save_dataset
 from gurobipy import *
 
 

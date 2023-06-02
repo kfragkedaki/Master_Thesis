@@ -6,30 +6,27 @@ from torch.nn import DataParallel
 
 
 def load_env(name: str):
-    from src.problems import TSP
-    from src.env import TSPEnv
+    from src.problems import TSP, CVRP
 
     problem = {
         "tsp": TSP,
-        "tsp2": TSPEnv,
+        "cvrp": CVRP,
         # 'evrp': EVRP,
     }.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
     return problem
 
 
-def load_agent(name: str):
-    from src.agents.tsp_agent import TSPAgent
+def load_attention_model(name: str):
+    from src.nets import AttentionTSPModel, AttentionVRPModel, AttentionEVRPModel
 
-    # from src.agents.evrp_agent import EVRPAgent
-
-    agent = {
-        "tsp": TSPAgent,
-        # 'evrp': EVRP,
+    model = {
+        "tsp": AttentionTSPModel,
+        "cvrp": AttentionVRPModel,
+        # 'evrp': AttentionEVRPModel,
     }.get(name, None)
-
-    assert agent is not None, "Currently unsupported agent: {}!".format(name)
-    return agent
+    assert model is not None, "Currently unsupported problem: {}!".format(name)
+    return model
 
 
 def move_to(var, device):
@@ -89,8 +86,6 @@ def load_args(filename):
 
 
 def load_model(path, epoch=None):
-    from src.nets.attention_model import AttentionModel
-
     if os.path.isfile(path):
         model_filename = path
         path = os.path.dirname(model_filename)
@@ -109,9 +104,8 @@ def load_model(path, epoch=None):
 
     problem = load_env(args["problem"])
 
-    model_class = {"attention": AttentionModel}.get(
-        args.get("model", "attention"), None
-    )
+    model_class = load_attention_model(args["problem"])
+
     assert model_class is not None, "Unknown model: {}".format(model_class)
 
     model = model_class(

@@ -182,16 +182,10 @@ class GraphAttentionEncoder(nn.Module):
         embed_dim: int = 128,
         num_attention_layers: int = 3,
         num_heads: int = 8,
-        node_input_dim: int = None,
         feed_forward_hidden: int = 512,
         normalization: str = "batch",
-        features: tuple = (),
     ):
         super(GraphAttentionEncoder, self).__init__()
-
-        self.features = features
-        # To map input to embedding space
-        self.init_embed_node = nn.Linear(node_input_dim, embed_dim)
 
         self.layers = nn.Sequential(
             *(
@@ -205,21 +199,6 @@ class GraphAttentionEncoder(nn.Module):
     def forward(self, x):
 
         # Batch multiply to get initial embeddings of nodes
-        out = self._init_embed(x)
-        out = self.layers(out)
+        out = self.layers(x)
 
         return out  # (batch_size, graph_size, embed_dim)
-
-    def _init_embed(self, input):
-        if len(self.features) > 0:
-            return self.init_embed_node(
-                torch.cat(
-                    (
-                        input["loc"],
-                        *(input[feat][:, :, None] for feat in self.features),
-                    ),
-                    -1,
-                )
-            )
-
-        return self.init_embed_node(input)

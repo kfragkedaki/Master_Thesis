@@ -4,7 +4,8 @@ import torch
 import pprint as pp
 
 from src.options import get_options
-from src.utils import load_env, load_agent
+from src.utils import load_env
+from src.agents import Agent
 
 
 def run(opts: dict()):
@@ -19,8 +20,7 @@ def run(opts: dict()):
     env = load_env(opts.problem)
     # env = load_env("tsp2")
 
-    agent = load_agent(opts.problem)
-    agent(opts, env).train()
+    Agent(opts, env).train()
 
 
 if __name__ == "__main__":

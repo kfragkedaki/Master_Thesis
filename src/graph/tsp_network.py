@@ -3,6 +3,7 @@ from typing import List
 from .tsp_graph import Graph
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 
 class Network:
@@ -166,7 +167,7 @@ class Network:
         for i, graph in enumerate(self.graphs):
             node_positions[i] = graph.node_positions
 
-        return node_positions
+        return torch.FloatTensor(node_positions)
 
     def __len__(self):
         return self.num_graphs

@@ -15,7 +15,9 @@ def get_options(args=None):
 
     # Data
     parser.add_argument(
-        "--problem", default="tsp", help="The problem to solve, default 'tsp'"
+        "--problem",
+        default="tsp",
+        help="The problem to solve tsp, cvrp or evrp, default 'tsp'",
     )
     parser.add_argument(
         "--graph_size", type=int, default=10, help="The size of the problem graph"

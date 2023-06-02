@@ -25,14 +25,13 @@ class TSP(object):
         # Length is distance (L2-norm of difference) from each next location from its prev and of last from first
         return (d[:, 1:] - d[:, :-1]).norm(p=2, dim=2).sum(1) + (
             d[:, 0] - d[:, -1]
-        ).norm(p=2, dim=1), None  # np.linalg.norm(node_one_pos - node_two_pos) ?get_distances(self, paths)?
+        ).norm(
+            p=2, dim=1
+        ), None  # np.linalg.norm(node_one_pos - node_two_pos) ?get_distances(self, paths)?
 
     @staticmethod
     def make_dataset(*args, **kwargs):
         return TSPDataset(*args, **kwargs)
-        # return Network(
-        #     num_graphs=kwargs['num_samples'], num_nodes=kwargs['size'], num_depots=1,
-        # )
 
     @staticmethod
     def make_state(*args, **kwargs):
@@ -68,6 +67,16 @@ class TSP(object):
         return beam_search(state, beam_size, propose_expansions)
 
 
+# def make_instance(args):
+#     loc, *args = args
+#     grid_size = 1
+#     if len(args) > 0:
+#         depot_types, customer_types, grid_size = args
+#     return {
+#         "loc": torch.tensor(loc, dtype=torch.float) / grid_size,
+#     }
+
+
 class TSPDataset(Dataset):
     def __init__(
         self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
@@ -80,18 +89,20 @@ class TSPDataset(Dataset):
 
             with open(filename, "rb") as f:
                 data = pickle.load(f)
+                # self.data = [
+                #     make_instance(args) for args in data[offset : offset + num_samples]
+                # ]
                 self.data = [
                     torch.FloatTensor(row)
                     for row in (data[offset : offset + num_samples])
                 ]
         else:
-            # Sample points randomly in [0, 1] square
-            self.data = [
-                {
-                    'loc': torch.FloatTensor(size, 2).uniform_(0, 1),
-                }
-                for i in range(num_samples)
-            ]
+            sampler = Network(
+                num_graphs=num_samples,
+                num_nodes=size,
+                num_depots=1,
+            )
+            self.data = sampler.get_graph_positions()
 
         self.size = len(self.data)
 

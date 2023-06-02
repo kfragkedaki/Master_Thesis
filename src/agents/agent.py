@@ -3,26 +3,25 @@ import os
 import torch
 
 from src.agents.train import train_epoch, validate
-from src.nets.attention_model import AttentionModel
-from src.utils import torch_load_cpu, get_baseline_model
+from src.utils import torch_load_cpu, get_baseline_model, load_attention_model
 
 from tensorboard_logger import Logger as TbLogger
 from torch.utils.tensorboard import SummaryWriter
 
 
-class TSPAgent:
+class Agent:
     def __init__(
         self,
         opts,
         env,
     ):
         """
-        The TSPAgent is used in companionship with the TSPEnv
-        to solve the traveling salesman problem.
+        The Agent is used in companionship with the problem Environment
+        to solve the TSP/VRP/EVRP problem.
 
         Args:
             opts (int): Configurations
-            env (TSPEnv): Environment for the TSP problem
+            env (Env): Environment for the problem
         """
         self.opts = opts
         self.env = env
@@ -34,7 +33,7 @@ class TSPAgent:
         load_path = opts.load_path if opts.load_path is not None else opts.resume
         self.load_data = {} if load_path is None else torch_load_cpu(load_path)
 
-        self.model = AttentionModel(
+        self.model = load_attention_model(env.NAME)(
             embedding_dim=opts.embedding_dim,
             problem=env,
             n_encode_layers=opts.n_encode_layers,

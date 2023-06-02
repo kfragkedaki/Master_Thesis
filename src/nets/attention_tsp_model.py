@@ -7,7 +7,7 @@ from typing import NamedTuple
 # from src.utils.tensor_functions import compute_in_batches
 
 from .graph_encoder import GraphAttentionEncoder
-from .graph_decoder import GraphDecoder
+from .graph_decoder import GraphDecoder, GraphDecoderVRP
 from torch.nn import DataParallel
 from src.utils.beam_search import CachedLookup
 
@@ -37,7 +37,7 @@ class AttentionModelFixed(NamedTuple):
         )
 
 
-class AttentionModel(nn.Module):
+class AttentionTSPModel(nn.Module):
     def __init__(
         self,
         embedding_dim: int = 128,
@@ -50,7 +50,7 @@ class AttentionModel(nn.Module):
         n_heads: int = 8,
         checkpoint_encoder: bool = False,
     ):
-        super(AttentionModel, self).__init__()
+        super(AttentionTSPModel, self).__init__()
 
         self.decode_type = None
         self.temp = 1.0
@@ -68,8 +68,6 @@ class AttentionModel(nn.Module):
             embed_dim=embedding_dim,
             num_attention_layers=n_encode_layers,
             normalization=normalization,
-            node_input_dim=self.node_dim,
-            features=self.features,
         )
 
         self.decoder = GraphDecoder(
@@ -98,9 +96,9 @@ class AttentionModel(nn.Module):
         if (
             self.checkpoint_encoder and self.training
         ):  # Only checkpoint if we need gradients
-            embeddings = checkpoint(self.encoder, input)
+            embeddings = checkpoint(self.encoder, self._init_embed(input))
         else:
-            embeddings = self.encoder(input)
+            embeddings = self.encoder(self._init_embed(input))
 
         self.encoder_data["input"] = input.cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
@@ -222,42 +220,29 @@ class AttentionModel(nn.Module):
                 3, 0, 1, 2, 4
             )  # (n_heads, batch_size, num_steps, graph_size, head_dim)
         )
-
         # Problem specific context parameters (placeholder and step context dimension)
 
     def _initialize_problem(self, embedding_dim: int):
-        self.is_tsp = self.problem.NAME == "tsp"
-        self.is_evrp = self.problem.NAME == "evrp"
+        self.node_dim = 2  # x, y
+        self.features = ()
 
-        # For each node we compute (glimpse key, glimpse value, logit key) so 3 * embedding_dim
+        # To map input to embedding space
+        self.init_embed_node = nn.Linear(self.node_dim, embedding_dim)
+
         self.project_node_embeddings = nn.Linear(
             embedding_dim, 3 * embedding_dim, bias=False
         )
         self.project_fixed_context = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.step_context_dim = 2 * embedding_dim  # Embedding of first and last node
 
-        if self.is_evrp:
-            # Embedding of last node + remaining_capacity / remaining length / remaining prize to collect
-            self.step_context_dim = embedding_dim + 1
-            self.node_dim = 3  # x, y, available_chargers, num_trucks, num_trailer
-            self.features = ("available_chargers", "num_trucks", "num_trailer")
+        # Learned input symbols for first action
+        self.W_placeholder = nn.Parameter(torch.Tensor(2 * embedding_dim))
+        self.W_placeholder.data.uniform_(
+            -1, 1
+        )  # Placeholder should be in range of activations
 
-            # Need to include the updated information per node
-            self.project_node_step = nn.Linear(1, 3 * embedding_dim, bias=False)
-
-        elif self.is_tsp:
-            self.step_context_dim = (
-                2 * embedding_dim
-            )  # Embedding of first and last node
-            self.node_dim = 2  # x, y
-            self.features = ()
-
-            # Learned input symbols for first action
-            self.W_placeholder = nn.Parameter(torch.Tensor(2 * embedding_dim))
-            self.W_placeholder.data.uniform_(
-                -1, 1
-            )  # Placeholder should be in range of activations
-        else:
-            assert self.is_tsp, "Unsupported problem: {}".format(self.problem.NAME)
+    def _init_embed(self, input):
+        return self.init_embed_node(input)
 
     def beam_search(self, *args, **kwargs):
         return self.problem.beam_search(*args, **kwargs, model=self)

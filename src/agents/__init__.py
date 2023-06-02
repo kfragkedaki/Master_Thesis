@@ -1,1 +1,1 @@
-from .tsp_agent import TSPAgent
+from .agent import Agent
