@@ -16,7 +16,7 @@ def get_options(args=None):
     # Data
     parser.add_argument(
         "--problem",
-        default="tsp",
+        default="evrp",
         help="The problem to solve tsp, cvrp or evrp, default 'tsp'",
     )
     parser.add_argument(
@@ -145,7 +145,18 @@ def get_options(args=None):
         default=None,
         help="Data distribution to use during training, defaults and options depend on problem.",
     )
-
+    parser.add_argument(
+        "--num_trucks",
+        type=int,
+        default=None,
+        help="The size of the fleet if we have the EVRP problem",
+    )
+    parser.add_argument(
+        "--num_trailers",
+        type=int,
+        default=None,
+        help="The number of the trailers of the EVRP problem.",
+    )
     # Misc
     parser.add_argument(
         "--log_step", type=int, default=5, help="Log info every log_step steps"
@@ -179,6 +190,12 @@ def get_options(args=None):
     )
     parser.add_argument(
         "--no_progress_bar", action="store_true", help="Disable progress bar"
+    )
+    parser.add_argument(
+        "--truck_names",
+        type=str,
+        default=None,
+        help="Location of the csv file to use for truck names",
     )
 
     opts = parser.parse_args(args)

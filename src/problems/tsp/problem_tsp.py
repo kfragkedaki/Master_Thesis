@@ -66,9 +66,10 @@ class TSP(object):
 
         return beam_search(state, beam_size, propose_expansions)
 
+
 class TSPDataset(Dataset):
     def __init__(
-        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
+        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None, **kwargs
     ):
         super(TSPDataset, self).__init__()
 
@@ -80,7 +81,7 @@ class TSPDataset(Dataset):
                 data = pickle.load(f)
                 self.data = [
                     torch.FloatTensor(row)
-                    for row in (data[offset : offset + num_samples])
+                    for row in (data[offset: offset + num_samples])
                 ]
         else:
             sampler = Network(

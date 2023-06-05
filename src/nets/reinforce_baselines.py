@@ -172,6 +172,9 @@ class RolloutBaseline(Baseline):
                 size=self.opts.graph_size,
                 num_samples=self.opts.val_size,
                 distribution=self.opts.data_distribution,
+                num_trucks=self.opts.num_trucks,
+                num_trailers=self.opts.num_trailers,
+                truck_names=self.opts.truck_names,
             )
         else:
             self.dataset = dataset

@@ -328,6 +328,9 @@ class GraphDecoderEVRP(GraphDecoder):
             mask_inner: bool = True,
             mask_logits: bool = True,
             W_placeholder: torch.ParameterDict = None,
+            num_trailers: int = 3,
+            num_trucks: int = 2,
+            feed_forward_hidden: int = 512,
     ):
         """
         Args:
@@ -351,6 +354,29 @@ class GraphDecoderEVRP(GraphDecoder):
             mask_logits=mask_logits,
             W_placeholder=W_placeholder,
         )
+
+        # trailer projection
+        self.project_trailer = nn.Sequential(
+            nn.Linear(num_trailers * embed_dim, embed_dim),  # trailer feature extraction
+            nn.Linear(embed_dim, feed_forward_hidden),
+            nn.ReLU(),
+            nn.Linear(feed_forward_hidden, embed_dim)
+        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)
+        self.select_trailer = nn.Linear(embed_dim, num_trucks)  # vehicle selection
+
+        # truck projection
+        self.project_truck = nn.Sequential(
+            nn.Linear(num_trucks * 3, embed_dim), # truck feature extraction
+            nn.Linear(embed_dim, feed_forward_hidden),
+            nn.ReLU(),
+            nn.Linear(feed_forward_hidden, embed_dim)
+        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)
+        self.FF_selected_trailer = nn.Sequential(
+            nn.Linear(embed_dim, feed_forward_hidden),
+            nn.ReLU(),
+            nn.Linear(feed_forward_hidden, embed_dim)
+        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)   # TODO check without this  as well
+        self.select_truck = nn.Linear(embed_dim * 2, num_trucks)  # vehicle selection
 
     def _get_attention_node_data(self, fixed, state):
         # Need to provide information of how much each node has already been served

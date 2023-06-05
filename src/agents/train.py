@@ -100,6 +100,9 @@ def train_epoch(
             size=opts.graph_size,
             num_samples=opts.epoch_size,
             distribution=opts.data_distribution,
+            num_trucks=opts.num_trucks,
+            num_trailers=opts.num_trailers,
+            truck_names=opts.truck_names,
         )
     )
     training_dataloader = DataLoader(

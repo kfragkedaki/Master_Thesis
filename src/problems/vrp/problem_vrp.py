@@ -115,7 +115,7 @@ def make_instance(args):
 
 class VRPDataset(Dataset):
     def __init__(
-        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
+        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None, **kwargs
     ):
         super(VRPDataset, self).__init__()
 

@@ -49,6 +49,7 @@ class AttentionTSPModel(nn.Module):
         normalization: str = "batch",
         n_heads: int = 8,
         checkpoint_encoder: bool = False,
+        opts: dict = None,
     ):
         super(AttentionTSPModel, self).__init__()
 

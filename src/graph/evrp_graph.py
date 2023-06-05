@@ -2,7 +2,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
-import string
+from src.utils.truck_naming import get_truck_names
+from matplotlib.lines import Line2D
 
 
 class EVRPGraph:
@@ -13,6 +14,7 @@ class EVRPGraph:
         num_nodes: int,
         num_trailers: int,
         num_trucks: int,
+        truck_names: str = None,
         plot_attributes: bool = False,
     ):
         """
@@ -25,6 +27,7 @@ class EVRPGraph:
         self.num_nodes = num_nodes
         self.num_trucks = num_trucks
         self.num_trailers = num_trailers
+        self.truck_names = truck_names
         self.plot_attributes = plot_attributes
 
         # generate graph and set node position
@@ -59,8 +62,6 @@ class EVRPGraph:
 
         # set trailers
         nx.set_node_attributes(self.graph, None, name="trailers")
-
-        trailer_index = string.ascii_uppercase
         trailer_origin_nodes = np.random.choice(self.graph.nodes, self.num_trailers)
 
         for i, node_id in enumerate(trailer_origin_nodes):
@@ -73,7 +74,7 @@ class EVRPGraph:
 
             if self.graph.nodes[node_id]["trailers"] is None:
                 self.graph.nodes[node_id]["trailers"] = {}
-            self.graph.nodes[node_id]["trailers"][f"Trailer {trailer_index[i]}"] = {
+            self.graph.nodes[node_id]["trailers"][f"Trailer {i}"] = {
                 "destination_node": destination,
                 "start_time": np.round(start_time, 2),
                 "end_time": start_time + time_frame,
@@ -83,11 +84,12 @@ class EVRPGraph:
         # set trucks
         nx.set_node_attributes(self.graph, None, name="trucks")
         truck_nodes = np.random.choice(self.graph.nodes, self.num_trucks)
+        trucks = get_truck_names(file=self.truck_names)
 
         for i, node_id in enumerate(truck_nodes):
             if self.graph.nodes[node_id]["trucks"] is None:
                 self.graph.nodes[node_id]["trucks"] = {}
-            self.graph.nodes[node_id]["trucks"][f"Truck {i}"] = {"battery_level": 1}
+            self.graph.nodes[node_id]["trucks"][f"Truck {trucks[i]}"] = {"battery_level": 1}
 
         # set general attributes
         nx.set_node_attributes(self.graph, "black", "node_color")
@@ -123,6 +125,24 @@ class EVRPGraph:
 
         return x_control, y_control
 
+    def add_legend(self, trailers, trucks):
+        plt.subplots_adjust(right=0.8)
+        keys = []
+        custom_lines = []
+
+        for key, value in trailers.items():
+            if key is None: key = "No Trailer"
+            keys.append(key)
+            custom_lines.append(Line2D([0], [0], color=value, lw=2))
+
+        for key, value in trucks.items():
+            if key is None: continue
+            keys.append(key)
+            custom_lines.append(Line2D([0], [0], color='black', lw=2, ls=value))
+
+        plt.legend(custom_lines, keys, loc='upper right',
+                bbox_to_anchor=(1.3, 1))
+
     def draw(self, ax, with_labels=False):
         """
         Draws the graph as a matplotlib plot.
@@ -142,13 +162,17 @@ class EVRPGraph:
 
         # draw attributes
         if self.plot_attributes:
-            color = {
-                "Trailer A": "blue",
-                "Trailer B": "red",
-                "Trailer C": "green",
-                None: "black",
-            }
-            style = {"Truck 1": "solid", "Truck 0": "dashed", None: "solid"}
+
+            colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
+            color = {f"Trailer {i}":  colors[i] for i in range(self.num_trailers)}
+            color[None] = "black"
+
+            truck_names = get_truck_names(self.truck_names)
+            styles = ["solid"] + [(0, (i + 1, self.num_trucks - i)) for i in range(self.num_trucks)]
+            style = {f"Truck {truck_names[i]}": styles[i % len(styles)] for i in range(self.num_trucks)}
+            style[None] = "solid"  # this should never appear, since we cannot move without a truck
+
+            if with_labels: self.add_legend(color, style)
 
             # chargers
             node_num_chargers = nx.get_node_attributes(self.graph, "num_chargers")
@@ -185,7 +209,7 @@ class EVRPGraph:
             )
 
             # trailers
-            label_offset = np.array([0, 0.2])
+            label_offset = np.array([0, 0.6])
             trailer_label_pos = {k: (v - 0.2 * label_offset) for k, v in pos.items()}
 
             node_trailers_data = nx.get_node_attributes(self.graph, "trailers")
@@ -252,8 +276,6 @@ class EVRPGraph:
                         bbox=dict(facecolor="white", edgecolor="none", alpha=0.5),
                     )
 
-            plt.show()
-
     def visit_edge(self, data: list) -> None:
         """
         Add the visited edges.
@@ -269,14 +291,15 @@ class EVRPGraph:
             trucks = self.graph.nodes.data()[source_node]["trucks"]
             trailers = self.graph.nodes.data()[source_node]["trailers"]
 
-            if not bool(trucks) or (bool(trucks) and truck not in trucks.keys()):
-                # do not add an edge when the truck is not already in the source node
-                continue
-            elif not bool(trailers) or (
-                bool(trailers) and trailer not in trailers.keys()
-            ):
-                # do not add trailer when it is not already in the source node, move just the truck
-                trailer = None
+            # TODO FOR DEBUGGING REASONS REMOVE
+            # if not bool(trucks) or (bool(trucks) and truck not in trucks.keys()):
+            #     # do not add an edge when the truck is not already in the source node
+            #     continue
+            # elif not bool(trailers) or (
+            #     bool(trailers) and trailer not in trailers.keys()
+            # ):
+            #     # do not add trailer when it is not already in the source node, move just the truck
+            #     trailer = None
 
             self.graph.add_edges_from(
                 [
@@ -357,17 +380,19 @@ class EVRPGraph:
 
 if __name__ == "__main__":
     fig, ax = plt.subplots()
+
     G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True)
     # add edges that where visited
     edges = [
-        (0, 3, "Truck 1", "Trailer B", 1),
-        (0, 3, "Truck 0", None, 2),
-        (3, 2, "Truck 1", "Trailer A", 3),
-        (3, 2, "Truck 0", "Trailer C", 4),
+        (0, 3, "Truck B", "Trailer 1", 1),
+        (0, 3, "Truck A", None, 2),
+        (3, 2, "Truck B", "Trailer 0", 3),
+        (3, 2, "Truck A", "Trailer 2", 4),
     ]
 
     G.visit_edge(edges)
 
     G.draw(ax=ax, with_labels=True)
+    plt.show(bbox_inches='tight')
     print(G._edges)
     print(G._nodes)

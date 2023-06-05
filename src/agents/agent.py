@@ -35,13 +35,14 @@ class Agent:
 
         self.model = load_attention_model(env.NAME)(
             embedding_dim=opts.embedding_dim,
-            problem=env,
+            problem=self.env,
             n_encode_layers=opts.n_encode_layers,
             mask_inner=True,
             mask_logits=True,
             normalization=opts.normalization,
             tanh_clipping=opts.tanh_clipping,
             checkpoint_encoder=opts.checkpoint_encoder,
+            opts=opts,
         ).to(opts.device)
 
         self.baseline_model = get_baseline_model(
@@ -97,6 +98,9 @@ class Agent:
             num_samples=self.opts.val_size,
             filename=self.opts.val_dataset,
             distribution=self.opts.data_distribution,
+            num_trucks=self.opts.num_trucks,
+            num_trailers=self.opts.num_trailers,
+            truck_names=self.opts.truck_names,
         )
 
         if self.opts.resume:
