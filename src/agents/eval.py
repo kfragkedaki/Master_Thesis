@@ -49,7 +49,9 @@ def eval_dataset_mp(args):
     model, _ = load_model(opts.model)
     val_size = opts.val_size // num_processes
     dataset = model.problem.make_dataset(
-        filename=dataset_path, num_samples=val_size, offset=opts.offset + val_size * i,
+        filename=dataset_path,
+        num_samples=val_size,
+        offset=opts.offset + val_size * i,
         num_trucks=opts.num_trucks,
         num_trailers=opts.num_trailers,
         truck_names=opts.truck_names,
@@ -84,7 +86,9 @@ def eval_dataset(dataset_path, width, softmax_temp, opts):
     else:
         device = torch.device("cuda:0" if use_cuda else "cpu")
         dataset = model.problem.make_dataset(
-            filename=dataset_path, num_samples=opts.val_size, offset=opts.offset
+            filename=dataset_path,
+            num_samples=opts.val_size,
+            offset=opts.offset,
             num_trucks=opts.num_trucks,
             num_trailers=opts.num_trailers,
             truck_names=opts.truck_names,
