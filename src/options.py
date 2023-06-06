@@ -148,13 +148,13 @@ def get_options(args=None):
     parser.add_argument(
         "--num_trucks",
         type=int,
-        default=None,
+        default=2,
         help="The size of the fleet if we have the EVRP problem",
     )
     parser.add_argument(
         "--num_trailers",
         type=int,
-        default=None,
+        default=3,
         help="The number of the trailers of the EVRP problem.",
     )
     # Misc

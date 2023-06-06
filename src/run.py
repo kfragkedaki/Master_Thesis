@@ -18,7 +18,8 @@ def run(opts: dict()):
 
     # Initialize the Environment
     env = load_env(opts.problem)
-    Agent(opts, env).train()
+    agent = Agent(opts, env)
+    agent.train()
 
 
 if __name__ == "__main__":

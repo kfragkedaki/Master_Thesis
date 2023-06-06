@@ -16,6 +16,7 @@ class EVRPGraph:
         num_trucks: int,
         truck_names: str = None,
         plot_attributes: bool = False,
+        **kwargs
     ):
         """
         Creates a fully connected and directed graph with node_num nodes.
@@ -32,9 +33,18 @@ class EVRPGraph:
 
         # generate graph and set node position
         self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
-        self.set_default_attributes()
+        self.set_default_attributes(**kwargs)
 
-    def set_default_attributes(self):
+    def set_default_attributes(self,
+        coordinates=None,
+        num_chargers=None,
+        trailers_locations=None,
+        trailers_start_time=None,
+        trailers_end_time=None,
+        trailers_destinations=None,
+        trucks_locations=None,
+        trucks_battery_levels=1,
+        trailers_status=1):
         """
         Sets the default colors of the nodes
         as attributes. Nodes are black except
@@ -44,55 +54,52 @@ class EVRPGraph:
         """
 
         # Node Attributes
+        # If data is not provided, generate it
+        if coordinates is None:
+            coordinates = dict(enumerate(np.random.rand(self.num_nodes, 2)))
+        if num_chargers is None:
+            num_chargers = dict(enumerate(np.random.randint(low=1, high=10, size=self.num_nodes)))
+        if trailers_locations is None:
+            trailers_locations = np.random.choice(self.graph.nodes, self.num_trailers)
+        if trailers_start_time is None:
+            trailers_start_time = np.random.randint(low=8.00, high=18.00, size=self.num_trailers)
+        if trailers_end_time is None:
+            trailers_end_time = trailers_start_time + np.round(np.random.uniform(low=0.5, high=2, size=self.num_trailers) * 2) / 2
+        if trailers_destinations is None:
+            trailers_destinations = np.array(
+                [np.random.choice([n for n in self.graph.nodes if n != node_id]) for node_id in trailers_locations])
+        if trucks_locations is None:
+            trucks_locations = np.random.choice(self.graph.nodes, self.num_trucks)
 
-        # set coordinates for each node
-        node_position = dict(enumerate(np.random.rand(self.num_nodes, 2)))
-        nx.set_node_attributes(self.graph, node_position, name="coordinates")
-
-        # set num_chargers for each node
-        num_chargers = np.random.randint(low=1, high=10, size=(self.num_nodes, 1))
+        # set attributes for each node
+        nx.set_node_attributes(self.graph, coordinates, name="coordinates")
         nx.set_node_attributes(
-            self.graph, dict(enumerate(num_chargers)), name="num_chargers"
+            self.graph, num_chargers, name="num_chargers"
         )
-
-        # set available_chargers for each node
         nx.set_node_attributes(
-            self.graph, dict(enumerate(num_chargers)), name="available_chargers"
+            self.graph, num_chargers, name="available_chargers"
         )
-
-        # set trailers
         nx.set_node_attributes(self.graph, None, name="trailers")
-        trailer_origin_nodes = np.random.choice(self.graph.nodes, self.num_trailers)
+        nx.set_node_attributes(self.graph, None, name="trucks")
+        nx.set_node_attributes(self.graph, "black", "node_color")
 
-        for i, node_id in enumerate(trailer_origin_nodes):
-            # Assign a random destination to each trailer
-            destination = np.random.choice(
-                [n for n in self.graph.nodes if n != node_id]
-            )
-            start_time = np.random.randint(low=8.00, high=18.00)
-            time_frame = np.round(np.random.uniform(low=0.5, high=2) * 2) / 2
-
+        for i, node_id in enumerate(trailers_locations):
             if self.graph.nodes[node_id]["trailers"] is None:
                 self.graph.nodes[node_id]["trailers"] = {}
             self.graph.nodes[node_id]["trailers"][f"Trailer {i}"] = {
-                "destination_node": destination,
-                "start_time": np.round(start_time, 2),
-                "end_time": start_time + time_frame,
-                "status": "Available"
+                "destination_node": trailers_destinations[i],
+                "start_time": np.round(trailers_start_time[i], 2),
+                "end_time": trailers_end_time[i],
+                "status": trailers_status,  # 1: "Available", 0: "Pending"
             }
 
         # set trucks
-        nx.set_node_attributes(self.graph, None, name="trucks")
-        truck_nodes = np.random.choice(self.graph.nodes, self.num_trucks)
         trucks = get_truck_names(file=self.truck_names)
 
-        for i, node_id in enumerate(truck_nodes):
+        for i, node_id in enumerate(trucks_locations):
             if self.graph.nodes[node_id]["trucks"] is None:
                 self.graph.nodes[node_id]["trucks"] = {}
-            self.graph.nodes[node_id]["trucks"][f"Truck {trucks[i]}"] = {"battery_level": 1}
-
-        # set general attributes
-        nx.set_node_attributes(self.graph, "black", "node_color")
+            self.graph.nodes[node_id]["trucks"][f"Truck {trucks[i]}"] = {"battery_level": trucks_battery_levels}
 
     def get_trailer_labels(self, data):
         node_trailers = {}
@@ -181,7 +188,7 @@ class EVRPGraph:
             )
 
             node_num_chargers = {
-                node_id: f"{avail_charg[0]} / {num_charg[0]}"
+                node_id: f"{avail_charg} / {num_charg}"
                 for (node_id, num_charg), avail_charg in zip(
                     node_num_chargers.items(), node_available_chargers.values()
                 )

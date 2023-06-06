@@ -43,6 +43,7 @@ class AttentionEVRPModel(nn.Module):
         normalization: str = "batch",
         n_heads: int = 8,
         checkpoint_encoder: bool = False,
+        opts: dict = None,
     ):
         super(AttentionEVRPModel, self).__init__()
 
@@ -71,6 +72,8 @@ class AttentionEVRPModel(nn.Module):
             tanh_clipping=tanh_clipping,
             mask_inner=mask_inner,
             mask_logits=mask_logits,
+            num_trailers=opts.num_trailers,
+            num_trucks=opts.num_trucks
         )
 
     def set_decode_type(self, decode_type, temp=None):
@@ -111,13 +114,31 @@ class AttentionEVRPModel(nn.Module):
         return cost, acc_log_prob  # tensor(batch_size) both
 
     def trailer_select(self, input, embeddings):
+        # TODO
+        mask = (input["node_trailers"].squeeze(-1) > 0)
+        trailer_embeddings = [embed[mask[i]] for i, embed in enumerate(embeddings)]
+        trailer_embeddings_repeated = []
+
+        # TODO
+        for batch_i, embed in enumerate(trailer_embeddings):
+            repeat_count = input['node_trailers'][batch_i][mask[batch_i]]  # get the number of trailers for each node
+            repeated_embed = torch.repeat_interleave(embed, repeat_count, dim=0)
+            trailer_embeddings_repeated.append(repeated_embed)
+
+        # Pad all embeddings tensors to have the same length (equal to max number of trailers across batches)
+        max_trailers = max([embed.size(0) for embed in trailer_embeddings_repeated])
+        trailer_embeddings_padded = torch.stack(
+            [torch.cat([embed, torch.zeros(max_trailers - embed.size(0), 128)], dim=0) for embed in
+             trailer_embeddings_repeated])
+
         pass
 
     def truck_select(self, input, embeddings, trailer):
+        # TODO
         pass
 
     def node_select(self, input, embeddings, trailer, truck):
-
+        # TODO
         outputs = []
         sequences = []
 

@@ -1,9 +1,11 @@
 from typing import List
 
-from .evrp_graph import EVRPGraph
+from src.graph.evrp_graph import EVRPGraph
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from src.utils.truck_naming import get_truck_number, get_trailer_number
+
 
 class EVRPNetwork:
     def __init__(
@@ -12,6 +14,7 @@ class EVRPNetwork:
         num_nodes: int,
         num_trucks: int,
         num_trailers: int,
+        truck_names: str = None,
         plot_attributes: bool = False,
     ) -> List[EVRPGraph]:
         """
@@ -33,13 +36,14 @@ class EVRPNetwork:
         self.num_graphs = num_graphs
         self.num_trucks = num_trucks
         self.num_trailers = num_trailers
+        self.truck_names = truck_names
         self.graphs: List[EVRPGraph] = []
 
         # generate a graph with nn nodes, nt trailers, ntr trucks
-        for _ in range(num_graphs):
+        for i in range(num_graphs):
             self.graphs.append(
                 EVRPGraph(
-                    num_nodes, num_trailers, num_trucks, plot_attributes=plot_attributes
+                    num_nodes=num_nodes, num_trailers=num_trailers, num_trucks=num_trucks, truck_names=truck_names, plot_attributes=plot_attributes
                 )
             )
 
@@ -79,7 +83,7 @@ class EVRPNetwork:
             ]
         )
 
-    def draw(self, graph_idxs: np.ndarray) -> None:
+    def draw(self, graph_idxs: np.ndarray, with_labels: bool = False) -> any:
         """
         Draw multiple graphs in a matplotlib grid.
 
@@ -101,9 +105,13 @@ class EVRPNetwork:
         for n, graph_idx in enumerate(graph_idxs):
             ax = plt.subplot(num_rows, num_columns, n + 1)
 
-            self.graphs[graph_idx].draw(ax=ax)
+            if with_labels and n == len(graph_idxs)-1:
+                legend = with_labels
+            else:
+                legend = False
+            self.graphs[graph_idx].draw(ax=ax, with_labels=legend)
 
-        plt.show()
+        plt.show(bbox_inches='tight')
 
         # convert to plot to rgb-array
         fig.canvas.draw()
@@ -118,19 +126,19 @@ class EVRPNetwork:
 
         Args:
             transition_matrix (np.ndarray): Shape num_graphs x 2
-                where each row is [source_node_idx, target_node_idx].
+                where each row is [source_node_idx, target_node_idx, truck, trailer, index].
         """
         for i, row in enumerate(transition_matrix):
-            self.graphs[i].visit_edge(row[0], row[1])
+            self.graphs[i].visit_edge(row)
 
-    def get_graph_positions(self) -> np.ndarray:
+    def get_graph_positions(self) -> torch.Tensor:
         """
         Returns the coordinates of each node in every graph as
         an ndarray of shape (num_graphs, num_nodes, 2) sorted
         by the graph and node index.
 
         Returns:
-            np.ndarray: Node coordinates of each graph. Shape
+            torch.Tensor: Node coordinates of each graph. Shape
                 (num_graphs, num_nodes, 2)
         """
 
@@ -140,86 +148,105 @@ class EVRPNetwork:
 
         return torch.FloatTensor(node_positions)
 
-    def get_node_avail_chargers(self) -> np.ndarray:
+    def get_node_avail_chargers(self) -> torch.Tensor:
         """
-        Returns the available chargers for each node in each graph.
+        Returns the total number of chargers for each node in each graph.
 
         Returns:
-            np.ndarray: Number of available chargers of each node in shape
-                (num_graphs, num_nodes, 1)
-            np.ndarray: Charger availability of each node in shape
+            torch.Tensor: Number of available chargers of each node in shape
                 (num_graphs, num_nodes, 1)
         """
         chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
         for i, graph in enumerate(self.graphs):
-            chargers[i] = graph._node_avail_chargers
+            chargers[i] = graph._node_avail_chargers[:, None]
 
-        avail_chargers = np.where(chargers > 0, 1., 0.)
-        return chargers, torch.FloatTensor(avail_chargers)  # values, bool
+        # avail_chargers = np.where(chargers > 0, 1., 0.)
+        return torch.FloatTensor(chargers)
 
-    def get_node_trucks(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_node_trucks(self) -> dict:
         """
-        Returns the trucks for each node in each graph.
+        Returns the state of all trucks in each graph.
 
         Returns:
-            np.ndarray: Trucks of each node in shape
-                (num_graphs, num_nodes, 1)
-            np.ndarray: Truck availability of each node in shape
-                (num_graphs, num_nodes, 1)
+            dict: Locations and battery levels each in shape
+                (num_graphs, num_trucks, 1)
         """
-        trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1), dtype=dict)
-        avail_trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        state = {}
+        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trucks, 1))
+        state["battery_levels"] = torch.zeros(size=(self.num_graphs, self.num_trucks, 1))
 
-        for i, graph in enumerate(self.graphs):
-            trucks[i] = graph._node_trucks[:, None]
+        for graph_index, graph in enumerate(self.graphs):
+            trucks = graph._node_trucks
 
             # True if available charged trucks
-            for node_index, node in enumerate(graph._node_trucks):
-                if node and any(truck.get('battery_level') == 1 for truck in node.values() if truck):
-                    avail_trucks[i, node_index] = 1
+            for node_index, truck_node in enumerate(trucks):
+                if truck_node is not None:
+                    for name, value in truck_node.items():
+                        truck_index = get_truck_number(truck=name, file=self.truck_names)
+                        state["locations"][graph_index, truck_index, 0] = node_index
+                        state["battery_levels"][graph_index, truck_index, 0] = value["battery_level"]
 
-        return trucks, torch.FloatTensor(avail_trucks)  # values, bool
+        return state  # values
 
-    def get_node_trailers(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_available_trucks(self) -> np.array:
+        # TODO
+        # avail_trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        # if value['battery_level'] == 1:
+        #     avail_trucks[graph_index, node_index, 0] += 1
+
+        pass
+
+    def get_node_trailers(self) -> dict:
         """
-        Returns the trailers for each node in each graph.
+        Returns the trailers in each graph.
 
         Returns:
-            np.ndarray: Trailers of each node in shape
-                (num_graphs, num_nodes, 1)
-            np.ndarray: Trailer availability of each node in shape
-                (num_graphs, num_nodes, 1)
+            dict: Trailers' location, destination and status each in shape
+                (num_graphs, num_trailers, 1)
         """
-        trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1), dtype=dict)
-        avail_trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        state = {}
+        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["destinations"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["status"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
 
-        for i, graph in enumerate(self.graphs):
-            trailers[i] = graph._node_trailers[:, None]
+        for graph_index, graph in enumerate(self.graphs):
+            trailers = graph._node_trailers
 
             # True if trailer exists, and not in destination node and if status not pending
-            for node_index, trailer_node in enumerate(graph._node_trailers):
+            for node_index, trailer_node in enumerate(trailers):
                 if trailer_node is not None:
-                    for trailer in trailer_node.values():
-                        if trailer['destination_node'] != node_index and trailer['status'] != 'Pending':
-                            avail_trailers[i, node_index] = 1
+                    for name, value in trailer_node.items():
+                        trailer_index = get_trailer_number(trailer=name)
+                        state["locations"][graph_index, trailer_index, 0] = node_index
+                        state["destinations"][graph_index, trailer_index, 0] = value["destination_node"]
+                        state["status"][graph_index, trailer_index, 0] = value["status"]
+                        state["start_time"][graph_index, trailer_index, 0] = value["start_time"]
+                        state["end_time"][graph_index, trailer_index, 0] = value["end_time"]
 
-        return trailers, torch.FloatTensor(avail_trailers)  # values, bool
+        return state
+
+    def get_available_trailers(self) -> np.array:
+        # TODO
+        #  avail_trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+
+        # if value['destination_node'] != node_index and value['status'] == 1:  # 1: 'Available'
+        #     avail_trailers[graph_index, node_index, 0] += 1
+        pass
 
 
 if __name__ == "__main__":
-    fig, ax = plt.subplots()
     G = EVRPNetwork(
         num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True
     )
 
     # add edges that where visited
-    edges = [
-        (0, 3, "Truck 1", "Trailer B", 1),
-        (0, 3, "Truck 0", None, 2),
-        (3, 2, "Truck 1", "Trailer A", 3),
-        (3, 2, "Truck 0", "Trailer C", 4),
-    ]
+    edges = [[
+        (0, 3, "Truck B", "Trailer 1", 1),
+        (0, 3, "Truck A", None, 2),
+        (3, 2, "Truck B", "Trailer 0", 3),
+        (3, 2, "Truck A", "Trailer 2", 4),
+    ]]
 
     G.visit_edges(edges)
 
-    G.draw(ax=ax, with_labels=True)
+    G.draw(graph_idxs=range(3), with_labels=True)

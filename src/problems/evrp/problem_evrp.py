@@ -4,7 +4,10 @@ import os
 import pickle
 from src.problems.evrp.state_evrp import StateEVRP
 from src.utils.beam_search import beam_search
+from src.utils.truck_naming import get_truck_names
 from src.graph.evrp_network import EVRPNetwork
+from src.graph.evrp_graph import EVRPGraph
+
 
 
 class EVRP(object):
@@ -18,6 +21,31 @@ class EVRP(object):
     @staticmethod
     def make_state(*args, **kwargs):
         return StateEVRP.initialize(*args, **kwargs)
+
+    # def get_state(self) -> np.ndarray:
+    #     """
+    #     Getter for the current environment state
+    #
+    #     Returns:
+    #         np.ndarray: Shape (num_graph, num_nodes, 4)
+    #         where the third dimension consists of the
+    #         x, y coordinates, if the node is a depot,
+    #         and if it has been visted yet.
+    #     """
+    #
+    #     # generate state (depots not yet set)
+    #     state = np.dstack(
+    #         [
+    #             self.sampler.get_graph_positions(),
+    #             np.zeros((self.batch_size, self.num_nodes)),
+    #             self.generate_mask(),
+    #         ]
+    #     )
+    #
+    #     # set depots in state to 1
+    #     state[np.arange(len(state)), self.depots.T, 2] = 1
+    #
+    #     return state
 
     @staticmethod
     def beam_search(
@@ -49,47 +77,59 @@ class EVRP(object):
         return beam_search(state, beam_size, propose_expansions)
 
 
-def make_instances(num_samples, graph_size, num_trucks, num_trailers, *args):
+def make_instances(num_samples, graph_size, num_trucks, num_trailers, truck_names, *args):
     # TODO improve this: you already have it in a nice format
+
     sampler = EVRPNetwork(
         num_graphs=num_samples,
         num_nodes=graph_size,
         num_trucks=num_trucks,
         num_trailers=num_trailers,
+        truck_names=truck_names,
     )
 
     coords = sampler.get_graph_positions()
-    _, avail_chargers = sampler.get_node_avail_chargers()
-    _, node_trucks = sampler.get_node_trucks()
-    _, node_trailers = sampler.get_node_trailers()
+    chargers = sampler.get_node_avail_chargers()
+    trailers_state = sampler.get_node_trailers()
+    trucks_state = sampler.get_node_trucks()
 
     instances = []
     for i in range(coords.shape[0]):
-        args = coords[i], avail_chargers[i], node_trucks[i], node_trailers[i]
+        args = coords[i], chargers[i], trucks_state["locations"][i], trucks_state["battery_levels"][i], \
+            trailers_state["locations"][i],  trailers_state["destinations"][i], trailers_state["status"][i], \
+            trailers_state["start_time"][i], trailers_state["end_time"][i]
         instance = make_instance(args)
         instances.append(instance)
 
-    return instances
-
-    return make_instance(args)
+    return sampler, instances
 
 
 def make_instance(args):
-    coords, avail_chargers, node_trucks, node_trailers, *args = args
+    # TODO add start & end time
+    coords, chargers, trucks_locations, trucks_battery_levels, trailers_locations, trailers_destinations, trailers_status, trailer_start_time, trailer_end_time = args
 
     return {
-        "coords": coords,
-        "avail_chargers": avail_chargers,
-        "node_trucks": node_trucks,
-        "node_trailers": node_trailers,
+        "coordinates": coords,
+        "num_chargers": chargers,
+        "trucks_locations": trucks_locations,
+        "trucks_battery_levels": trucks_battery_levels,
+        "trailers_locations": trailers_locations,
+        "trailers_destinations": trailers_destinations,
+        "trailers_status": trailers_status,
+        "trailers_start_time": trailer_start_time,
+        "trailers_end_time": trailer_end_time,
     }
 
 
 class EVRPDataset(Dataset):
     def __init__(
-        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
+        self, filename: str = None, size: int = 50, num_samples: int = 1000000, offset: int = 0, **kwargs
     ):
         super(EVRPDataset, self).__init__()
+
+        num_trucks = kwargs["num_trucks"] if "num_trucks" in kwargs else 2
+        num_trailers = kwargs["num_trailers"] if "num_trucks" in kwargs else 3
+        truck_names = kwargs["truck_names"] if "num_trucks" in kwargs else None
 
         self.data_set = []
         if filename is not None:
@@ -97,11 +137,25 @@ class EVRPDataset(Dataset):
 
             with open(filename, "rb") as f:
                 data = pickle.load(f)
-                self.data = [
-                    make_instance(args) for args in data[offset : offset + num_samples]
-                ]
+                self.data = []
+                for args in data[offset: offset + num_samples]:
+                    instance = make_instance(args)
+                    self.data.append(
+                        make_instance(args)
+                    )
+
+                    instance["num_nodes"] = len(instance["coordinates"])
+                    instance["num_trucks"] = len(instance["trucks_locations"])
+                    instance["num_trailers"] = len(instance["trailers_locations"])
+                    instance["truck_names"] = truck_names
+
+                    assert len(get_truck_names(truck_names)) > instance["num_trucks"], \
+                        "The number of truck names does not match the number of trucks"
+                    self.sampler = EVRPGraph(**instance)
         else:
-            self.data = make_instances(num_samples, size, 2, 3)
+            assert len(get_truck_names(truck_names)) > num_trucks, \
+                "The number of truck names does not match the number of trucks"
+            self.sampler, self.data = make_instances(num_samples, size, num_trucks, num_trailers, truck_names)
 
         self.size = len(self.data)
 
@@ -109,4 +163,4 @@ class EVRPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return self.data[idx]  # self.sampler.graphs[idx]
