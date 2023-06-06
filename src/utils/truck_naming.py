@@ -6,7 +6,7 @@ import os
 
 cwd = os.getcwd()
 sys.path.append(cwd)
-FILE = '../problems/evrp/truck_names.csv'
+FILE = "../problems/evrp/truck_names.csv"
 
 
 def get_truck_names(file: str = None) -> list:
@@ -27,7 +27,7 @@ def get_truck_number(truck: str = "", file: str = None):
     names = get_truck_names(file)
 
     # Extract the letter from the string (assuming the format is always "Truck X")
-    letter = truck.split(' ')[1]
+    letter = truck.split(" ")[1]
     assert letter in names, "Wrong truck name"
     # Get the number of the truck
     number = names.index(letter)
@@ -37,7 +37,7 @@ def get_truck_number(truck: str = "", file: str = None):
 
 def get_trailer_number(trailer: str = ""):
     # Extract the number from the string (assuming the format is always "Trailer X")
-    number = trailer.split(' ')[1]
+    number = trailer.split(" ")[1]
 
     return int(number)
 

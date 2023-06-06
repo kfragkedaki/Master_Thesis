@@ -99,10 +99,7 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["input"] = input["coords"].cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
-        trailer = self.trailer_select(input, embeddings)
-        truck = self.truck_select(input, embeddings, trailer)
-
-        _log_p, pi = self.node_select(input, embeddings, trailer, truck)
+        _log_p, pi = self.step(input, embeddings)
 
         cost, mask = self.problem.get_costs(input, pi)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
@@ -113,42 +110,73 @@ class AttentionEVRPModel(nn.Module):
 
         return cost, acc_log_prob  # tensor(batch_size) both
 
-    def trailer_select(self, input, embeddings):
-        # TODO
-        mask = (input["node_trailers"].squeeze(-1) > 0)
-        trailer_embeddings = [embed[mask[i]] for i, embed in enumerate(embeddings)]
-        trailer_embeddings_repeated = []
+    def trailer_select(self, state, embeddings):
+        batch_size, _, embedding_size = embeddings.size()
+        trailer_embeddings = embeddings.gather(1, state.trailers_locations.to(torch.int64).expand(-1, -1, embedding_size))
+        trailer_context = trailer_embeddings.contiguous().reshape(batch_size, -1)
+        out = self.decoder.project_trailer(trailer_context)
+        out = self.decoder.FF_selected_trailer(out)
+        out = self.decoder.select_trailer(out)
 
-        # TODO
-        for batch_i, embed in enumerate(trailer_embeddings):
-            repeat_count = input['node_trailers'][batch_i][mask[batch_i]]  # get the number of trailers for each node
-            repeated_embed = torch.repeat_interleave(embed, repeat_count, dim=0)
-            trailer_embeddings_repeated.append(repeated_embed)
+        # TODO MASK pending trailer or trailer that have reached their destination node
+        # mask = (state.node_trailers.squeeze(-1) > 0)
+        # prob_trailer = torch.softmax(out, dim=-1)
 
-        # Pad all embeddings tensors to have the same length (equal to max number of trailers across batches)
-        max_trailers = max([embed.size(0) for embed in trailer_embeddings_repeated])
-        trailer_embeddings_padded = torch.stack(
-            [torch.cat([embed, torch.zeros(max_trailers - embed.size(0), 128)], dim=0) for embed in
-             trailer_embeddings_repeated])
+        log_trailer = torch.log_softmax(out, dim=1)  # (batch_size, num_trailer)
 
-        pass
+        if self.decode_type == "greedy":
+            trailer = torch.max(torch.softmax(out, dim=1), dim=1)[1]  # index of the trailer so (batch_size,)
+        elif self.decode_type == "sampling":
+            trailer = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
 
-    def truck_select(self, input, embeddings, trailer):
-        # TODO
-        pass
+        return trailer, log_trailer
 
-    def node_select(self, input, embeddings, trailer, truck):
+    def truck_select(self, state, embeddings, trailer):
+        batch_size, _, embedding_size = embeddings.size()
+        trailer_embedding = embeddings.gather(1, trailer[:, None, None].expand(-1, -1, 128))
+        trailer_out = self.decoder.FF_selected_trailer(trailer_embedding)
+
+        trucks_coords = state.coords.gather(1, state.trucks_locations.expand(-1, -1, 2).to(torch.int64))
+        trucks_battery_levels = state.trucks_battery_levels
+        truck_context = torch.cat(  # (batch_size, num_trucks, 3)
+            (
+                trucks_coords,
+                trucks_battery_levels
+            ), -1)
+        truck_context = truck_context.contiguous().reshape(batch_size, 1, -1)
+        truck_out = self.decoder.project_truck(truck_context)
+
+        out = torch.cat((trailer_out, truck_out), -1).view(batch_size, embedding_size * 2)
+        out = self.decoder.select_truck(out)
+
+        # TODO mask trucks that do not have battery
+
+        log_truck = torch.log_softmax(out, dim=1)  # (batch_size, num_trucks)
+
+        if self.decode_type == "greedy":
+            truck = torch.max(torch.softmax(out, dim=1), dim=1)[1]  # index of the truck so (batch_size,)
+        elif self.decode_type == "sampling":
+            truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+
+        return truck, log_truck
+
+    def step(self, input, embeddings):
         # TODO
         outputs = []
         sequences = []
 
         state = self.problem.make_state(input)
+        current_node = state.get_current_node()
+        batch_size, num_veh = current_node.size()
+
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         fixed = self._precompute(embeddings)
 
         # Perform decoding steps
         i = 0
         while not state.all_finished():
+            trailer, log_trailer = self.trailer_select(state, embeddings)
+            truck, log_truck = self.truck_select(state, embeddings, trailer)
 
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type

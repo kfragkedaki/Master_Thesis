@@ -9,7 +9,6 @@ from src.graph.evrp_network import EVRPNetwork
 from src.graph.evrp_graph import EVRPGraph
 
 
-
 class EVRP(object):
 
     NAME = "evrp"
@@ -77,7 +76,9 @@ class EVRP(object):
         return beam_search(state, beam_size, propose_expansions)
 
 
-def make_instances(num_samples, graph_size, num_trucks, num_trailers, truck_names, *args):
+def make_instances(
+    num_samples, graph_size, num_trucks, num_trailers, truck_names, *args
+):
     # TODO improve this: you already have it in a nice format
 
     sampler = EVRPNetwork(
@@ -95,9 +96,17 @@ def make_instances(num_samples, graph_size, num_trucks, num_trailers, truck_name
 
     instances = []
     for i in range(coords.shape[0]):
-        args = coords[i], chargers[i], trucks_state["locations"][i], trucks_state["battery_levels"][i], \
-            trailers_state["locations"][i],  trailers_state["destinations"][i], trailers_state["status"][i], \
-            trailers_state["start_time"][i], trailers_state["end_time"][i]
+        args = (
+            coords[i],
+            chargers[i],
+            trucks_state["locations"][i],
+            trucks_state["battery_levels"][i],
+            trailers_state["locations"][i],
+            trailers_state["destinations"][i],
+            trailers_state["status"][i],
+            trailers_state["start_time"][i],
+            trailers_state["end_time"][i],
+        )
         instance = make_instance(args)
         instances.append(instance)
 
@@ -106,10 +115,25 @@ def make_instances(num_samples, graph_size, num_trucks, num_trailers, truck_name
 
 def make_instance(args):
     # TODO add start & end time
-    coords, chargers, trucks_locations, trucks_battery_levels, trailers_locations, trailers_destinations, trailers_status, trailer_start_time, trailer_end_time = args
+    (
+        coords,
+        chargers,
+        trucks_locations,
+        trucks_battery_levels,
+        trailers_locations,
+        trailers_destinations,
+        trailers_status,
+        trailer_start_time,
+        trailer_end_time,
+    ) = args
+    num_nodes = len(coords)
+    node_trucks = torch.zeros(size=(num_nodes, 1))
+    node_trucks[trucks_locations.to(torch.int)] = 1
 
+    node_trailers = torch.zeros(size=(num_nodes, 1))
+    node_trailers[trailers_locations.to(torch.int)] = 1
     return {
-        "coordinates": coords,
+        "coords": coords,
         "num_chargers": chargers,
         "trucks_locations": trucks_locations,
         "trucks_battery_levels": trucks_battery_levels,
@@ -118,12 +142,20 @@ def make_instance(args):
         "trailers_status": trailers_status,
         "trailers_start_time": trailer_start_time,
         "trailers_end_time": trailer_end_time,
+        "avail_chargers": torch.where(chargers > 0, 1.0, 0.0),
+        "node_trucks": node_trucks,  # TODO add restrictions
+        "node_trailers": node_trailers,  # TODO add restrictions
     }
 
 
 class EVRPDataset(Dataset):
     def __init__(
-        self, filename: str = None, size: int = 50, num_samples: int = 1000000, offset: int = 0, **kwargs
+        self,
+        filename: str = None,
+        size: int = 50,
+        num_samples: int = 1000000,
+        offset: int = 0,
+        **kwargs
     ):
         super(EVRPDataset, self).__init__()
 
@@ -138,24 +170,26 @@ class EVRPDataset(Dataset):
             with open(filename, "rb") as f:
                 data = pickle.load(f)
                 self.data = []
-                for args in data[offset: offset + num_samples]:
+                for args in data[offset : offset + num_samples]:
                     instance = make_instance(args)
-                    self.data.append(
-                        make_instance(args)
-                    )
+                    self.data.append(make_instance(args))
 
-                    instance["num_nodes"] = len(instance["coordinates"])
+                    instance["num_nodes"] = len(instance["coords"])
                     instance["num_trucks"] = len(instance["trucks_locations"])
                     instance["num_trailers"] = len(instance["trailers_locations"])
                     instance["truck_names"] = truck_names
 
-                    assert len(get_truck_names(truck_names)) > instance["num_trucks"], \
-                        "The number of truck names does not match the number of trucks"
+                    assert (
+                        len(get_truck_names(truck_names)) > instance["num_trucks"]
+                    ), "The number of truck names does not match the number of trucks"
                     self.sampler = EVRPGraph(**instance)
         else:
-            assert len(get_truck_names(truck_names)) > num_trucks, \
-                "The number of truck names does not match the number of trucks"
-            self.sampler, self.data = make_instances(num_samples, size, num_trucks, num_trailers, truck_names)
+            assert (
+                len(get_truck_names(truck_names)) > num_trucks
+            ), "The number of truck names does not match the number of trucks"
+            self.sampler, self.data = make_instances(
+                num_samples, size, num_trucks, num_trailers, truck_names
+            )
 
         self.size = len(self.data)
 

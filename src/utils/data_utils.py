@@ -15,11 +15,11 @@ def save_dataset(dataset, filename):
     if not os.path.isdir(filedir):
         os.makedirs(filedir)
 
-    with open(check_extension(filename), 'wb') as f:
+    with open(check_extension(filename), "wb") as f:
         pickle.dump(dataset, f, pickle.HIGHEST_PROTOCOL)
 
 
 def load_dataset(filename):
 
-    with open(check_extension(filename), 'rb') as f:
+    with open(check_extension(filename), "rb") as f:
         return pickle.load(f)

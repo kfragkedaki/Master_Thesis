@@ -8,20 +8,26 @@ class StateEVRP(NamedTuple):
     coords: torch.Tensor
 
     # TODO Maybe not to use that but update via the graph networkx library? Seems more effective
-    available_chargers: torch.Tensor # Keeps the available chargers per node
-    node_trucks: torch.Tensor # Keeps the trucks per node TODO Should I keep only the charged trucks?
-    node_trailers:  torch.Tensor # Keeps the trailers per node TODO Should I keep only the charged trucks?
+    avail_chargers: torch.Tensor  # Keeps the available chargers per node
+    node_trucks: torch.Tensor  # Keeps the trucks per node TODO Should I keep only the charged trucks?
+    node_trailers: torch.Tensor  # Keeps the trailers per node TODO Should I keep only the charged trucks?
 
     # If this state contains multiple copies (i.e. beam search) for the same instance, then for memory efficiency
     # the coords and dist tensors are not kept multiple times, so we need to use the ids to index the correct rows.
     ids: torch.Tensor  # Keeps track of original fixed data index of rows
-    truck: torch.Tensor  # number of trucks
-    trailer: torch.Tensor  # number of trailers
+    num_chargers: torch.Tensor  # Keep track of the total number of chargers in each node
+    trucks_locations: torch.Tensor  # trucks location
+    trucks_battery_levels: torch.Tensor  # trucks battery level
+
+    trailers_locations: torch.Tensor  # trailers location
+    trailers_destinations: torch.Tensor  # trailers' destinations
+    trailers_status: torch.Tensor  # trailers' status
+    trailers_start_time: torch.Tensor  # trailers' start_time
+    trailers_end_time: torch.Tensor  # trailers' end_time
 
     # State
     from_loc: torch.Tensor
     to_loc: torch.Tensor
-    destination: torch.Tensor
     visited_: torch.Tensor  # Keeps track of nodes that have been visited
     lengths: torch.Tensor
     cur_coord: torch.Tensor
@@ -41,14 +47,20 @@ class StateEVRP(NamedTuple):
         )  # If tensor, idx all tensors by this tensor:
 
         return self._replace(
-            available_chargers=self.available_chargers[key],
-            num_trucks=self.num_trucks[key],
+            avail_chargers=self.avail_chargers[key],
+            node_trucks=self.node_trucks[key],
+            node_trailers=self.node_trailers[key],
             ids=self.ids[key],
-            truck=self.truck[key],
-            trailer=self.trailer[key],
+            num_chargers=self.num_chargers.truck[key],
+            trucks_locations=self.trucks_locations.truck[key],
+            trucks_battery_levels=self.trucks_battery_levels.truck[key],
+            trailers_locations=self.trailers_locations.truck[key],
+            trailers_destinations=self.trailers_destinations.truck[key],
+            trailers_status=self.trailers_status.truck[key],
+            trailers_start_time=self.trailers_start_time[key],
+            trailers_end_time=self.trailers_end_time[key],
             from_loc=self.from_loc[key],
             to_loc=self.to_loc[key],
-            destination=self.destination[key],
             visited_=self.visited_[key],
             lengths=self.lengths[key],
             cur_coord=self.cur_coord[key] if self.cur_coord is not None else None,
@@ -57,32 +69,44 @@ class StateEVRP(NamedTuple):
     @staticmethod
     def initialize(input, visited_dtype=torch.uint8):
 
-        coords = input['coords']
-        available_chargers = input['available_chargers']
-        num_trucks = input['num_trucks']
+        coords = input["coords"]
+        node_trucks = input["node_trucks"]
+        node_trailers = input["node_trailers"]
 
-        batch_size, n_loc, _ = coords.size()
+        batch_size, num_nodes, _ = coords.size()
+        _, num_trucks, _ = node_trucks.size()
+        _, num_trailers, _ = node_trailers.size()
+
         prev_a = torch.zeros(batch_size, 1, dtype=torch.long, device=coords.device)
+
         return StateEVRP(
             coords=coords,
-            available_chargers=available_chargers,
-            num_trucks=num_trucks,
+            avail_chargers=input["avail_chargers"],
+            node_trucks=node_trucks,
+            node_trailers=node_trailers,
             ids=torch.arange(batch_size, dtype=torch.int64, device=coords.device)[
                 :, None
             ],  # Add steps dimension
-            truck=None,
-            trailer=None,
+            num_chargers=input["num_chargers"],
+            trucks_locations=input["trucks_locations"],
+            trucks_battery_levels=input["trucks_battery_levels"],
+            trailers_locations=input["trailers_locations"],
+            trailers_destinations=input["trailers_destinations"],
+            trailers_status=input["trailers_status"],
+            trailers_start_time=input["trailers_start_time"],
+            trailers_end_time=input["trailers_end_time"],
             from_loc=prev_a,
             to_loc=prev_a,
-            destination=None,
             # Keep visited with depot so we can scatter efficiently (if there is an action for depot)
             visited_=(  # Visited as mask is easier to understand, as long more memory efficient
-                torch.zeros(batch_size, 1, n_loc, dtype=torch.uint8, device=coords.device)
+                torch.zeros(
+                    batch_size, 1, num_nodes, dtype=torch.uint8, device=coords.device
+                )
                 if visited_dtype == torch.uint8
                 else torch.zeros(
                     batch_size,
                     1,
-                    (n_loc + 63) // 64,
+                    (num_nodes + 63) // 64,
                     dtype=torch.int64,
                     device=coords.device,
                 )  # Ceil
@@ -99,8 +123,10 @@ class StateEVRP(NamedTuple):
         assert self.all_finished()
 
         return self.lengths + (
-            self.coords[self.ids, self.destination, :] - self.cur_coord
-        ).norm(p=2, dim=-1) # TODO fix this
+            self.coords[self.ids, self.trailers_destinations, :] - self.cur_coord
+        ).norm(
+            p=2, dim=-1
+        )  # TODO fix this
 
     def update(self, selected):
         # TODO select truck, trailer, node and update

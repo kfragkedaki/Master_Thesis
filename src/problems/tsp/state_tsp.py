@@ -126,9 +126,7 @@ class StateTSP(NamedTuple):
         return self.prev_a
 
     def get_mask(self):
-        return (
-            self.visited > 0
-        )  # return bool or uint8 depending on pytorch version
+        return self.visited > 0  # return bool or uint8 depending on pytorch version
 
     def construct_solutions(self, actions):
         return actions

@@ -29,15 +29,15 @@ def rollout(model, dataset, opts):
     set_decode_type(model, "greedy")
     model.eval()
 
-    def eval_model_bat(bat):
+    def eval_model_bat(batch_data):
         with torch.no_grad():
-            cost, _ = model(move_to(bat, opts.device))
+            cost, _ = model(move_to(batch_data, opts.device))
         return cost.data.cpu()
 
     return torch.cat(
         [
-            eval_model_bat(bat)
-            for bat in tqdm(
+            eval_model_bat(batch_data)
+            for batch_data in tqdm(
                 DataLoader(dataset, batch_size=opts.eval_batch_size),
                 disable=opts.no_progress_bar,
             )

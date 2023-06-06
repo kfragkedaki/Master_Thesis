@@ -319,18 +319,18 @@ class GraphDecoderEVRP(GraphDecoder):
     """
 
     def __init__(
-            self,
-            embed_dim: int = 128,
-            num_heads: int = 8,
-            step_context_dim: int = 256,
-            tanh_clipping: int = 10.0,
-            temp: int = 1,
-            mask_inner: bool = True,
-            mask_logits: bool = True,
-            W_placeholder: torch.ParameterDict = None,
-            num_trailers: int = 3,
-            num_trucks: int = 2,
-            feed_forward_hidden: int = 512,
+        self,
+        embed_dim: int = 128,
+        num_heads: int = 8,
+        step_context_dim: int = 256,
+        tanh_clipping: int = 10.0,
+        temp: int = 1,
+        mask_inner: bool = True,
+        mask_logits: bool = True,
+        W_placeholder: torch.ParameterDict = None,
+        num_trailers: int = 3,
+        num_trucks: int = 2,
+        feed_forward_hidden: int = 512,
     ):
         """
         Args:
@@ -356,26 +356,40 @@ class GraphDecoderEVRP(GraphDecoder):
         )
 
         # trailer projection
-        self.project_trailer = nn.Sequential(
-            nn.Linear(num_trailers * embed_dim, embed_dim),  # trailer feature extraction
-            nn.Linear(embed_dim, feed_forward_hidden),
-            nn.ReLU(),
-            nn.Linear(feed_forward_hidden, embed_dim)
-        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)
-        self.select_trailer = nn.Linear(embed_dim, num_trucks)  # vehicle selection
+        self.project_trailer = (
+            nn.Sequential(
+                nn.Linear(
+                    num_trailers * embed_dim, embed_dim
+                ),  # trailer feature extraction
+                nn.Linear(embed_dim, feed_forward_hidden),
+                nn.ReLU(),
+                nn.Linear(feed_forward_hidden, embed_dim),
+            )
+            if feed_forward_hidden > 0
+            else nn.Linear(embed_dim, embed_dim)
+        )
+        self.select_trailer = nn.Linear(embed_dim, num_trailers)  # vehicle selection
 
         # truck projection
-        self.project_truck = nn.Sequential(
-            nn.Linear(num_trucks * 3, embed_dim), # truck feature extraction
-            nn.Linear(embed_dim, feed_forward_hidden),
-            nn.ReLU(),
-            nn.Linear(feed_forward_hidden, embed_dim)
-        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)
-        self.FF_selected_trailer = nn.Sequential(
-            nn.Linear(embed_dim, feed_forward_hidden),
-            nn.ReLU(),
-            nn.Linear(feed_forward_hidden, embed_dim)
-        ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim)   # TODO check without this  as well
+        self.project_truck = (
+            nn.Sequential(
+                nn.Linear(num_trucks * 3, embed_dim),  # truck feature extraction
+                nn.Linear(embed_dim, feed_forward_hidden),
+                nn.ReLU(),
+                nn.Linear(feed_forward_hidden, embed_dim),
+            )
+            if feed_forward_hidden > 0
+            else nn.Linear(embed_dim, embed_dim)
+        )
+        self.FF_selected_trailer = (
+            nn.Sequential(
+                nn.Linear(embed_dim, feed_forward_hidden),
+                nn.ReLU(),
+                nn.Linear(feed_forward_hidden, embed_dim),
+            )
+            if feed_forward_hidden > 0
+            else nn.Linear(embed_dim, embed_dim)
+        )  # TODO check without this  as well
         self.select_truck = nn.Linear(embed_dim * 2, num_trucks)  # vehicle selection
 
     def _get_attention_node_data(self, fixed, state):

@@ -26,7 +26,7 @@ class Graph:
         # generate graph and set node position
         self.graph = nx.complete_graph(num_nodes)
         node_position = {
-            i: coordinates for i, coordinates in enumerate(np.random.rand(num_nodes, 2))
+            i: coords for i, coords in enumerate(np.random.rand(num_nodes, 2))
         }
         nx.set_node_attributes(self.graph, node_position, "coordinates")
 

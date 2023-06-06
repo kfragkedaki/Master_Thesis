@@ -43,7 +43,11 @@ class EVRPNetwork:
         for i in range(num_graphs):
             self.graphs.append(
                 EVRPGraph(
-                    num_nodes=num_nodes, num_trailers=num_trailers, num_trucks=num_trucks, truck_names=truck_names, plot_attributes=plot_attributes
+                    num_nodes=num_nodes,
+                    num_trailers=num_trailers,
+                    num_trucks=num_trucks,
+                    truck_names=truck_names,
+                    plot_attributes=plot_attributes,
                 )
             )
 
@@ -105,13 +109,13 @@ class EVRPNetwork:
         for n, graph_idx in enumerate(graph_idxs):
             ax = plt.subplot(num_rows, num_columns, n + 1)
 
-            if with_labels and n == len(graph_idxs)-1:
+            if with_labels and n == len(graph_idxs) - 1:
                 legend = with_labels
             else:
                 legend = False
             self.graphs[graph_idx].draw(ax=ax, with_labels=legend)
 
-        plt.show(bbox_inches='tight')
+        plt.show(bbox_inches="tight")
 
         # convert to plot to rgb-array
         fig.canvas.draw()
@@ -173,7 +177,9 @@ class EVRPNetwork:
         """
         state = {}
         state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trucks, 1))
-        state["battery_levels"] = torch.zeros(size=(self.num_graphs, self.num_trucks, 1))
+        state["battery_levels"] = torch.zeros(
+            size=(self.num_graphs, self.num_trucks, 1)
+        )
 
         for graph_index, graph in enumerate(self.graphs):
             trucks = graph._node_trucks
@@ -182,9 +188,13 @@ class EVRPNetwork:
             for node_index, truck_node in enumerate(trucks):
                 if truck_node is not None:
                     for name, value in truck_node.items():
-                        truck_index = get_truck_number(truck=name, file=self.truck_names)
+                        truck_index = get_truck_number(
+                            truck=name, file=self.truck_names
+                        )
                         state["locations"][graph_index, truck_index, 0] = node_index
-                        state["battery_levels"][graph_index, truck_index, 0] = value["battery_level"]
+                        state["battery_levels"][graph_index, truck_index, 0] = value[
+                            "battery_level"
+                        ]
 
         return state  # values
 
@@ -206,8 +216,12 @@ class EVRPNetwork:
         """
         state = {}
         state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
-        state["destinations"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["destinations"] = torch.zeros(
+            size=(self.num_graphs, self.num_trailers, 1)
+        )
         state["status"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["start_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["end_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
 
         for graph_index, graph in enumerate(self.graphs):
             trailers = graph._node_trailers
@@ -218,10 +232,16 @@ class EVRPNetwork:
                     for name, value in trailer_node.items():
                         trailer_index = get_trailer_number(trailer=name)
                         state["locations"][graph_index, trailer_index, 0] = node_index
-                        state["destinations"][graph_index, trailer_index, 0] = value["destination_node"]
+                        state["destinations"][graph_index, trailer_index, 0] = value[
+                            "destination_node"
+                        ]
                         state["status"][graph_index, trailer_index, 0] = value["status"]
-                        state["start_time"][graph_index, trailer_index, 0] = value["start_time"]
-                        state["end_time"][graph_index, trailer_index, 0] = value["end_time"]
+                        state["start_time"][graph_index, trailer_index, 0] = value[
+                            "start_time"
+                        ]
+                        state["end_time"][graph_index, trailer_index, 0] = value[
+                            "end_time"
+                        ]
 
         return state
 
@@ -240,12 +260,14 @@ if __name__ == "__main__":
     )
 
     # add edges that where visited
-    edges = [[
-        (0, 3, "Truck B", "Trailer 1", 1),
-        (0, 3, "Truck A", None, 2),
-        (3, 2, "Truck B", "Trailer 0", 3),
-        (3, 2, "Truck A", "Trailer 2", 4),
-    ]]
+    edges = [
+        [
+            (0, 3, "Truck B", "Trailer 1", 1),
+            (0, 3, "Truck A", None, 2),
+            (3, 2, "Truck B", "Trailer 0", 3),
+            (3, 2, "Truck A", "Trailer 2", 4),
+        ]
+    ]
 
     G.visit_edges(edges)
 

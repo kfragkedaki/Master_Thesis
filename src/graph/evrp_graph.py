@@ -16,7 +16,7 @@ class EVRPGraph:
         num_trucks: int,
         truck_names: str = None,
         plot_attributes: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Creates a fully connected and directed graph with node_num nodes.
@@ -35,8 +35,9 @@ class EVRPGraph:
         self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
         self.set_default_attributes(**kwargs)
 
-    def set_default_attributes(self,
-        coordinates=None,
+    def set_default_attributes(
+        self,
+        coords=None,
         num_chargers=None,
         trailers_locations=None,
         trailers_start_time=None,
@@ -44,7 +45,8 @@ class EVRPGraph:
         trailers_destinations=None,
         trucks_locations=None,
         trucks_battery_levels=1,
-        trailers_status=1):
+        trailers_status=1,
+    ):
         """
         Sets the default colors of the nodes
         as attributes. Nodes are black except
@@ -55,30 +57,40 @@ class EVRPGraph:
 
         # Node Attributes
         # If data is not provided, generate it
-        if coordinates is None:
-            coordinates = dict(enumerate(np.random.rand(self.num_nodes, 2)))
+        if coords is None:
+            coords = dict(enumerate(np.random.rand(self.num_nodes, 2)))
         if num_chargers is None:
-            num_chargers = dict(enumerate(np.random.randint(low=1, high=10, size=self.num_nodes)))
+            num_chargers = dict(
+                enumerate(np.random.randint(low=1, high=10, size=self.num_nodes))
+            )
         if trailers_locations is None:
             trailers_locations = np.random.choice(self.graph.nodes, self.num_trailers)
         if trailers_start_time is None:
-            trailers_start_time = np.random.randint(low=8.00, high=18.00, size=self.num_trailers)
+            trailers_start_time = np.random.randint(
+                low=8.00, high=18.00, size=self.num_trailers
+            )
         if trailers_end_time is None:
-            trailers_end_time = trailers_start_time + np.round(np.random.uniform(low=0.5, high=2, size=self.num_trailers) * 2) / 2
+            trailers_end_time = (
+                trailers_start_time
+                + np.round(
+                    np.random.uniform(low=0.5, high=2, size=self.num_trailers) * 2
+                )
+                / 2
+            )
         if trailers_destinations is None:
             trailers_destinations = np.array(
-                [np.random.choice([n for n in self.graph.nodes if n != node_id]) for node_id in trailers_locations])
+                [
+                    np.random.choice([n for n in self.graph.nodes if n != node_id])
+                    for node_id in trailers_locations
+                ]
+            )
         if trucks_locations is None:
             trucks_locations = np.random.choice(self.graph.nodes, self.num_trucks)
 
         # set attributes for each node
-        nx.set_node_attributes(self.graph, coordinates, name="coordinates")
-        nx.set_node_attributes(
-            self.graph, num_chargers, name="num_chargers"
-        )
-        nx.set_node_attributes(
-            self.graph, num_chargers, name="available_chargers"
-        )
+        nx.set_node_attributes(self.graph, coords, name="coordinates")
+        nx.set_node_attributes(self.graph, num_chargers, name="num_chargers")
+        nx.set_node_attributes(self.graph, num_chargers, name="available_chargers")
         nx.set_node_attributes(self.graph, None, name="trailers")
         nx.set_node_attributes(self.graph, None, name="trucks")
         nx.set_node_attributes(self.graph, "black", "node_color")
@@ -99,7 +111,9 @@ class EVRPGraph:
         for i, node_id in enumerate(trucks_locations):
             if self.graph.nodes[node_id]["trucks"] is None:
                 self.graph.nodes[node_id]["trucks"] = {}
-            self.graph.nodes[node_id]["trucks"][f"Truck {trucks[i]}"] = {"battery_level": trucks_battery_levels}
+            self.graph.nodes[node_id]["trucks"][f"Truck {trucks[i]}"] = {
+                "battery_level": trucks_battery_levels
+            }
 
     def get_trailer_labels(self, data):
         node_trailers = {}
@@ -138,17 +152,18 @@ class EVRPGraph:
         custom_lines = []
 
         for key, value in trailers.items():
-            if key is None: key = "No Trailer"
+            if key is None:
+                key = "No Trailer"
             keys.append(key)
             custom_lines.append(Line2D([0], [0], color=value, lw=2))
 
         for key, value in trucks.items():
-            if key is None: continue
+            if key is None:
+                continue
             keys.append(key)
-            custom_lines.append(Line2D([0], [0], color='black', lw=2, ls=value))
+            custom_lines.append(Line2D([0], [0], color="black", lw=2, ls=value))
 
-        plt.legend(custom_lines, keys, loc='upper right',
-                bbox_to_anchor=(1.3, 1))
+        plt.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.3, 1))
 
     def draw(self, ax, with_labels=False):
         """
@@ -171,15 +186,23 @@ class EVRPGraph:
         if self.plot_attributes:
 
             colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
-            color = {f"Trailer {i}":  colors[i] for i in range(self.num_trailers)}
+            color = {f"Trailer {i}": colors[i] for i in range(self.num_trailers)}
             color[None] = "black"
 
             truck_names = get_truck_names(self.truck_names)
-            styles = ["solid"] + [(0, (i + 1, self.num_trucks - i)) for i in range(self.num_trucks)]
-            style = {f"Truck {truck_names[i]}": styles[i % len(styles)] for i in range(self.num_trucks)}
-            style[None] = "solid"  # this should never appear, since we cannot move without a truck
+            styles = ["solid"] + [
+                (0, (i + 1, self.num_trucks - i)) for i in range(self.num_trucks)
+            ]
+            style = {
+                f"Truck {truck_names[i]}": styles[i % len(styles)]
+                for i in range(self.num_trucks)
+            }
+            style[
+                None
+            ] = "solid"  # this should never appear, since we cannot move without a truck
 
-            if with_labels: self.add_legend(color, style)
+            if with_labels:
+                self.add_legend(color, style)
 
             # chargers
             node_num_chargers = nx.get_node_attributes(self.graph, "num_chargers")
@@ -325,7 +348,9 @@ class EVRPGraph:
 
     @property
     def _node_avail_chargers(self) -> np.ndarray:
-        available_chargers = nx.get_node_attributes(self.graph, "available_chargers").values()
+        available_chargers = nx.get_node_attributes(
+            self.graph, "available_chargers"
+        ).values()
         return np.asarray(list(available_chargers))
 
     @property
@@ -400,6 +425,6 @@ if __name__ == "__main__":
     G.visit_edge(edges)
 
     G.draw(ax=ax, with_labels=True)
-    plt.show(bbox_inches='tight')
+    plt.show(bbox_inches="tight")
     print(G._edges)
     print(G._nodes)
