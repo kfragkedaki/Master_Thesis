@@ -15,7 +15,7 @@ class EVRPGraph:
         num_trailers: int,
         num_trucks: int,
         truck_names: str = None,
-        plot_attributes: bool = False,
+        plot_attributes: bool = True,
         **kwargs,
     ):
         """
@@ -165,7 +165,7 @@ class EVRPGraph:
 
         plt.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.3, 1))
 
-    def draw(self, ax, with_labels=False):
+    def draw(self, ax, with_labels=True):
         """
         Draws the graph as a matplotlib plot.
         """
@@ -318,8 +318,8 @@ class EVRPGraph:
             timestamp (src): Timestamp id of the edge
         """
         for source_node, target_node, truck, trailer, timestamp in data:
-            trucks = self.graph.nodes.data()[source_node]["trucks"]
-            trailers = self.graph.nodes.data()[source_node]["trailers"]
+            # trucks = self.graph.nodes.data()[source_node]["trucks"]
+            # trailers = self.graph.nodes.data()[source_node]["trailers"]
 
             # TODO FOR DEBUGGING REASONS REMOVE
             # if not bool(trucks) or (bool(trucks) and truck not in trucks.keys()):
@@ -331,12 +331,19 @@ class EVRPGraph:
             #     # do not add trailer when it is not already in the source node, move just the truck
             #     trailer = None
 
+            if trailer == -1 or trailer == None:
+                trailer = None
+            else:
+                trailer = f"Trailer {int(trailer)}"
+
+            trucks = get_truck_names(file=self.truck_names)
+
             self.graph.add_edges_from(
                 [
                     (
-                        source_node,
-                        target_node,
-                        {"truck": truck, "trailer": trailer, "timestamp": timestamp},
+                        int(source_node),
+                        int(target_node),
+                        {"truck": f"Truck {trucks[int(truck)]}", "trailer": trailer, "timestamp": int(timestamp)},
                     )
                 ]
             )
@@ -413,13 +420,13 @@ class EVRPGraph:
 if __name__ == "__main__":
     fig, ax = plt.subplots()
 
-    G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True)
+    G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2)
     # add edges that where visited
     edges = [
-        (0, 3, "Truck B", "Trailer 1", 1),
-        (0, 3, "Truck A", None, 2),
-        (3, 2, "Truck B", "Trailer 0", 3),
-        (3, 2, "Truck A", "Trailer 2", 4),
+        (0, 3, 1, 1, 1),
+        (0, 3, 0, None, 2),
+        (3, 2, 1, 0, 3),
+        (3, 2, 0, 2, 4),
     ]
 
     G.visit_edge(edges)

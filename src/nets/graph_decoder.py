@@ -431,7 +431,7 @@ class GraphDecoderEVRP(GraphDecoder):
 
         # Select the indices of the next nodes in the sequences, result (batch_size) long
         selected_node = self._select_node(
-            log_p.exp()[:, 0, :], mask # mask[:, 0, :] TODO
+            log_p.exp()[:, 0, :], mask[:, 0, :]
         )  # Squeeze out steps dimension
         # selected = self._select_node(log_p.exp()[:, 0, :], mask[:, 0, :], state, truck,
         #                              sequences)  # Squeeze out steps dimension
@@ -446,8 +446,8 @@ class GraphDecoderEVRP(GraphDecoder):
         # Compute keys and values for the nodes
         glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
 
-        # TODO Compute the mask
-        mask = state.get_mask()  # [batch_size, 1, graph_size]
+        # TODO Fix Compute the mask
+        mask = state.get_mask(truck)  # [batch_size, 1, graph_size]
 
         # Compute logits (unnormalized log_p)  log_p:[batch_size, num_veh, graph_size], glimpse:[batch_size, num_veh, embed_dim]
         log_p, glimpse = self._get_attention_glimpse(query, glimpse_K, glimpse_V, logit_K, mask)
@@ -464,19 +464,19 @@ class GraphDecoderEVRP(GraphDecoder):
         Returns the context per step, optionally for multiple steps at once (for efficient evaluation of the model)
 
         :param embeddings: (batch_size, graph_size, embed_dim)
-        :param prev_a: (batch_size, num_steps)
+        :param state: StateEVRP
         :return: (batch_size, num_steps, context_dim)
         """
+
+        # Embeddings of truck node & trailer’s destination node.
+        # In case truck and trailer are not on the same node,
+        # we use then truck and trailer nodes.
 
         from_node = state.trucks_locations[state.ids, truck[:, None]].squeeze(-1)  # (batch_size, 1)
         trailer_node_ids = state.trailers_locations[state.ids, trailer[:, None]].squeeze(-1)  # (batch_size, 1)
         destination_node_ids = state.trailers_destinations[state.ids, trailer[:, None]].squeeze(-1)
 
         to_node = torch.where(torch.eq(from_node, trailer_node_ids), destination_node_ids, trailer_node_ids)
-
-        # Embeddings of truck node & trailer’s destination node.
-        # In case truck and trailer are not on the same node,
-        # we use then truck and trailer nodes.
 
         return torch.cat(
             (
@@ -514,10 +514,11 @@ class GraphDecoderEVRP(GraphDecoder):
         out = self.FF_trailer(trailer_context)
         out = self.select_trailer(out)
 
-        # TODO MASK pending trailer or trailer that have reached their destination node
-        # mask = (state.node_trailers.squeeze(-1) > 0)
-        # prob_trailer = torch.softmax(out, dim=-1)
+        # masked pending trailer or trailer that have reached their destination node
+        mask = torch.logical_and(torch.eq(state.trailers_destinations, state.trailers_locations),
+            torch.eq(state.trailers_status, torch.ones(size=state.trailers_status.shape)))
 
+        out[mask.squeeze(-1)] = -math.inf
         log_trailer = torch.log_softmax(out, dim=1)  # (batch_size, num_trailer)
 
         if self.decode_type == "greedy":
@@ -555,7 +556,9 @@ class GraphDecoderEVRP(GraphDecoder):
         )
         out = self.select_truck(context)
 
-        # TODO mask trucks that do not have battery
+        # mask trucks that do not have battery
+        mask = (state.trucks_battery_levels == 0)
+        out[mask.squeeze(-1)] = -math.inf
 
         log_truck = torch.log_softmax(out, dim=1)  # (batch_size, num_trucks)
 
@@ -566,6 +569,7 @@ class GraphDecoderEVRP(GraphDecoder):
         elif self.decode_type == "sampling":
             truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
 
+        # truck[torch.all(mask, dim=1).squeeze(-1)] = -1  # TODO without this it can only work with two trucks so as to be at least one charges
         return truck, log_truck
 
     def _select_node(self, probs, mask):
@@ -577,11 +581,9 @@ class GraphDecoderEVRP(GraphDecoder):
         if self.decode_type == "greedy":
             _, selected = probs.max(1)
             # _, selected[torch.arange(batch_size), veh] = probs.max(1)
-            # assert not mask.gather( TODO
-            #     1, selected.unsqueeze(-1)
-            # ).data.any(), "Decode greedy: infeasible action has maximum probability"
-            # assert not mask.gather(-1, selected[torch.arange(batch_size), veh].unsqueeze(
-            #     -1)).data.any(), "Decode greedy: infeasible action has maximum probability"
+            assert not mask.gather(
+                1, selected.unsqueeze(-1)
+            ).data.any(), "Decode greedy: infeasible action has maximum probability"
 
         elif self.decode_type == "sampling":
             selected = probs.multinomial(1).squeeze(1)
@@ -591,9 +593,9 @@ class GraphDecoderEVRP(GraphDecoder):
             # Check if sampling went OK, can go wrong due to bug on GPU
             # See https://discuss.pytorch.org/t/bad-behavior-of-multinomial-function/10232
             # # while mask.gather(-1, selected[torch.arange(batch_size), veh].unsqueeze(-1)).data.any():
-            # while mask.gather(1, selected.unsqueeze(-1)).data.any(): TODO
-            #     print("Sampled bad values, resampling!")
-            #     selected = probs.multinomial(1).squeeze(1)
+            while mask.gather(1, selected.unsqueeze(-1)).data.any():
+                print("Sampled bad values, resampling!")
+                selected = probs.multinomial(1).squeeze(1)
             #     # selected[torch.arange(batch_size), veh] = probs.multinomial(1).squeeze(1)
         else:
             assert False, "Unknown decode type"

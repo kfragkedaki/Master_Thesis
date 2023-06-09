@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 from .graph_encoder import GraphAttentionEncoder
 from .graph_decoder import GraphDecoderEVRP
+from src.graph.evrp_network import EVRPNetwork
 from src.utils.beam_search import CachedLookup
 
 
@@ -82,13 +83,22 @@ class AttentionEVRPModel(nn.Module):
         if temp is not None:  # Do not change temperature if not provided
             self.temp = temp
 
-    def forward(self, input, return_pi=False):
+    def forward(self, input: dict = {}, graphs: tuple = (), return_pi=False):
         """
         :param input: (batch_size, graph_size, node_dim) input node features or dictionary with multiple tensors
         :param return_pi: whether to return the output sequences, this is optional as it is not compatible with
         using DataParallel as the results may be of different lengths on different GPUs
         :return:
         """
+
+        self.graphs = EVRPNetwork(
+            num_graphs=graphs[0].num_nodes,
+            num_nodes=graphs[0].num_nodes,
+            num_trucks=graphs[0].num_trucks,
+            num_trailers=graphs[0].num_trailers,
+            truck_names=graphs[0].truck_names,
+            plot_attributes=True,
+            graphs=graphs)
 
         if (
             self.checkpoint_encoder and self.training
@@ -112,7 +122,6 @@ class AttentionEVRPModel(nn.Module):
         return cost, acc_log_prob  # tensor(batch_size) both
 
     def step(self, input, embeddings):
-        # TODO
         outputs = []  # [(log_trailer, log_truck, log_node)]
         sequences = []  # [(from_node, to_node, truck_id, trailer_id, timestep=i)] BUT BE carefull trailer_id should be None when trailer not on the same node as truck
 
@@ -122,11 +131,14 @@ class AttentionEVRPModel(nn.Module):
 
         # Perform decoding steps
         i = 0
-        while not state.all_finished():  # TODO state.all_finished
+        while not state.all_finished():
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
             state = state.update(selected)
+
+            self.graphs.visit_edges(tensor_to_tuples(state.visited_))
+            self.graphs.draw(graph_idxs=range(3), with_labels=True)
 
             # Collect output of step
             outputs.append(log_p)
@@ -159,8 +171,7 @@ class AttentionEVRPModel(nn.Module):
 
         # The fixed context projection of the graph embedding is calculated only once for efficiency
         graph_embed = embeddings.mean(1)
-        # fixed context = (batch_size, 1, embed_dim) to make broadcastable with parallel timesteps
-        fixed_context = self.project_fixed_context(graph_embed)[:, None, :]
+        fixed_context = self.project_fixed_context(graph_embed)[:, None, :]  # (batch_size, 1, embed_dim)
 
         # The projection of the node embeddings for the attention is calculated once up front
         (
@@ -229,3 +240,16 @@ class AttentionEVRPModel(nn.Module):
         # Use a CachedLookup such that if we repeatedly index this object with the same index we only need to do
         # the lookup once... this is the case if all elements in the batch have maximum batch size
         return CachedLookup(self._precompute(embeddings))
+
+
+def tensor_to_tuples(tensor):
+    batch_size, features, time = tensor.shape
+    edges = []
+    for b in range(batch_size):
+        batch_list = []
+        for t in range(time):
+            time_list = tuple(tensor[b, :, t].tolist())
+            batch_list.append(time_list)
+        edges.append(batch_list)
+
+    return edges

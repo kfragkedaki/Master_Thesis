@@ -15,7 +15,8 @@ class EVRPNetwork:
         num_trucks: int,
         num_trailers: int,
         truck_names: str = None,
-        plot_attributes: bool = False,
+        plot_attributes: bool = True,
+        graphs: List[EVRPGraph] = None,
     ) -> List[EVRPGraph]:
         """
         Creates num_graphs random generated fully connected
@@ -37,19 +38,23 @@ class EVRPNetwork:
         self.num_trucks = num_trucks
         self.num_trailers = num_trailers
         self.truck_names = truck_names
-        self.graphs: List[EVRPGraph] = []
 
-        # generate a graph with nn nodes, nt trailers, ntr trucks
-        for i in range(num_graphs):
-            self.graphs.append(
-                EVRPGraph(
-                    num_nodes=num_nodes,
-                    num_trailers=num_trailers,
-                    num_trucks=num_trucks,
-                    truck_names=truck_names,
-                    plot_attributes=plot_attributes,
+        if graphs is None:
+            self.graphs: List[EVRPGraph] = []
+
+            # generate a graph with nn nodes, nt trailers, ntr trucks
+            for i in range(num_graphs):
+                self.graphs.append(
+                    EVRPGraph(
+                        num_nodes=num_nodes,
+                        num_trailers=num_trailers,
+                        num_trucks=num_trucks,
+                        truck_names=truck_names,
+                        plot_attributes=plot_attributes,
+                    )
                 )
-            )
+        else:
+            self.graphs = graphs
 
     def get_distance(self, graph_idx: int, node_idx_1: int, node_idx_2: int) -> float:
         """
@@ -164,7 +169,6 @@ class EVRPNetwork:
         for i, graph in enumerate(self.graphs):
             chargers[i] = graph._node_avail_chargers[:, None]
 
-        # avail_chargers = np.where(chargers > 0, 1., 0.)
         return torch.FloatTensor(chargers)
 
     def get_node_trucks(self) -> dict:
@@ -197,14 +201,6 @@ class EVRPNetwork:
                         ]
 
         return state  # values
-
-    def get_available_trucks(self) -> np.array:
-        # TODO
-        # avail_trucks = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
-        # if value['battery_level'] == 1:
-        #     avail_trucks[graph_index, node_index, 0] += 1
-
-        pass
 
     def get_node_trailers(self) -> dict:
         """
@@ -245,28 +241,20 @@ class EVRPNetwork:
 
         return state
 
-    def get_available_trailers(self) -> np.array:
-        # TODO
-        #  avail_trailers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
-
-        # if value['destination_node'] != node_index and value['status'] == 1:  # 1: 'Available'
-        #     avail_trailers[graph_index, node_index, 0] += 1
-        pass
-
 
 if __name__ == "__main__":
     G = EVRPNetwork(
-        num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True
+        num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2
     )
 
     # add edges that where visited
     edges = [
         [
-            (0, 3, "Truck B", "Trailer 1", 1),
-            (0, 3, "Truck A", None, 2),
-            (3, 2, "Truck B", "Trailer 0", 3),
-            (3, 2, "Truck A", "Trailer 2", 4),
-        ]
+            (0, 3, 1, 1, 1),
+            (0, 3, 0, None, 2),
+            (3, 2, 1, 0, 3),
+            (3, 2, 0, 2, 4),
+        ],
     ]
 
     G.visit_edges(edges)

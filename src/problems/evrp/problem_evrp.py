@@ -89,7 +89,6 @@ def make_instances(
 
 
 def make_instance(args):
-    # TODO add start & end time
     (
         coords,
         chargers,
@@ -118,8 +117,8 @@ def make_instance(args):
         "trailers_start_time": trailer_start_time,
         "trailers_end_time": trailer_end_time,
         "avail_chargers": torch.where(chargers > 0, 1.0, 0.0),
-        "node_trucks": node_trucks,  # TODO add restrictions
-        "node_trailers": node_trailers,  # TODO add restrictions
+        "node_trucks": node_trucks,
+        "node_trailers": node_trailers,
     }
 
 
@@ -172,4 +171,4 @@ class EVRPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx]  # self.sampler.graphs[idx]
+        return self.data[idx], self.sampler.graphs[idx]
