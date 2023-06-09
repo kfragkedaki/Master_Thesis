@@ -73,7 +73,8 @@ class AttentionEVRPModel(nn.Module):
             mask_inner=mask_inner,
             mask_logits=mask_logits,
             num_trailers=opts.num_trailers,
-            num_trucks=opts.num_trucks
+            num_trucks=opts.num_trucks,
+            features=self.features
         )
 
     def set_decode_type(self, decode_type, temp=None):
@@ -110,81 +111,25 @@ class AttentionEVRPModel(nn.Module):
 
         return cost, acc_log_prob  # tensor(batch_size) both
 
-    def trailer_select(self, state, embeddings):
-        batch_size, _, embedding_size = embeddings.size()
-        trailer_embeddings = embeddings.gather(1, state.trailers_locations.to(torch.int64).expand(-1, -1, embedding_size))
-        trailer_context = trailer_embeddings.contiguous().reshape(batch_size, -1)
-        out = self.decoder.project_trailer(trailer_context)
-        out = self.decoder.FF_selected_trailer(out)
-        out = self.decoder.select_trailer(out)
-
-        # TODO MASK pending trailer or trailer that have reached their destination node
-        # mask = (state.node_trailers.squeeze(-1) > 0)
-        # prob_trailer = torch.softmax(out, dim=-1)
-
-        log_trailer = torch.log_softmax(out, dim=1)  # (batch_size, num_trailer)
-
-        if self.decode_type == "greedy":
-            trailer = torch.max(torch.softmax(out, dim=1), dim=1)[1]  # index of the trailer so (batch_size,)
-        elif self.decode_type == "sampling":
-            trailer = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
-
-        return trailer, log_trailer
-
-    def truck_select(self, state, embeddings, trailer):
-        batch_size, _, embedding_size = embeddings.size()
-        trailer_embedding = embeddings.gather(1, trailer[:, None, None].expand(-1, -1, 128))
-        trailer_out = self.decoder.FF_selected_trailer(trailer_embedding)
-
-        trucks_coords = state.coords.gather(1, state.trucks_locations.expand(-1, -1, 2).to(torch.int64))
-        trucks_battery_levels = state.trucks_battery_levels
-        truck_context = torch.cat(  # (batch_size, num_trucks, 3)
-            (
-                trucks_coords,
-                trucks_battery_levels
-            ), -1)
-        truck_context = truck_context.contiguous().reshape(batch_size, 1, -1)
-        truck_out = self.decoder.project_truck(truck_context)
-
-        out = torch.cat((trailer_out, truck_out), -1).view(batch_size, embedding_size * 2)
-        out = self.decoder.select_truck(out)
-
-        # TODO mask trucks that do not have battery
-
-        log_truck = torch.log_softmax(out, dim=1)  # (batch_size, num_trucks)
-
-        if self.decode_type == "greedy":
-            truck = torch.max(torch.softmax(out, dim=1), dim=1)[1]  # index of the truck so (batch_size,)
-        elif self.decode_type == "sampling":
-            truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
-
-        return truck, log_truck
-
     def step(self, input, embeddings):
         # TODO
-        outputs = []
-        sequences = []
+        outputs = []  # [(log_trailer, log_truck, log_node)]
+        sequences = []  # [(from_node, to_node, truck_id, trailer_id, timestep=i)] BUT BE carefull trailer_id should be None when trailer not on the same node as truck
 
         state = self.problem.make_state(input)
-        current_node = state.get_current_node()
-        batch_size, num_veh = current_node.size()
-
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         fixed = self._precompute(embeddings)
 
         # Perform decoding steps
         i = 0
-        while not state.all_finished():
-            trailer, log_trailer = self.trailer_select(state, embeddings)
-            truck, log_truck = self.truck_select(state, embeddings, trailer)
-
+        while not state.all_finished():  # TODO state.all_finished
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
             state = state.update(selected)
 
             # Collect output of step
-            outputs.append(log_p[:, 0, :])
+            outputs.append(log_p)
             sequences.append(selected)
 
             i += 1
@@ -256,9 +201,7 @@ class AttentionEVRPModel(nn.Module):
 
     def _init_embed(self, input):
         return self.init_embed_node(
-            torch.cat(
-                (input["coords"], *(input[feat] for feat in self.features)), -1
-            )
+            torch.cat((input["coords"], *(input[feat] for feat in self.features)), -1)
         )
 
     def _initialize_problem(self, embedding_dim: int):
@@ -277,9 +220,6 @@ class AttentionEVRPModel(nn.Module):
         # Embedding of truck node & trailer’s destination node
         # (In case truck and trailer are not on the same node, we use then truck and trailer location nodes)
         self.step_context_dim = 2 * embedding_dim
-
-        # Need to include the updated information per node in (glimpse key, glimpse value, logit key)
-        self.project_node_step = nn.Linear(1, 3 * embedding_dim, bias=False)
 
     def beam_search(self, *args, **kwargs):
         return self.problem.beam_search(*args, **kwargs, model=self)

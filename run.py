@@ -18,6 +18,8 @@ def run(opts: dict()):
 
     # Initialize the Environment
     env = load_env(opts.problem)
+
+    # Train the Agent
     agent = Agent(opts, env)
     agent.train()
 

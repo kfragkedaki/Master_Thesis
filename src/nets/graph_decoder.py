@@ -66,28 +66,9 @@ class GraphDecoder(nn.Module):
             torch.Tensor: Log probabilities
         """
         self.decode_type = decode_type
+        self.temp = temp
 
-        # Compute query = context node embedding
-        query = fixed_attention.context_node_projected + self.project_step_context(
-            self._get_parallel_step_context(fixed_attention.node_embeddings, state)
-        )
-
-        # Compute keys and values for the nodes
-        glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(
-            fixed_attention, state
-        )
-
-        # Compute the mask
-        mask = state.get_mask()
-        # Compute logits (unnormalized log_p)
-        log_p, glimpse = self.get_attention_glimpse(
-            query, glimpse_K, glimpse_V, logit_K, mask
-        )
-
-        if normalize:
-            log_p = torch.log_softmax(log_p / temp, dim=-1)
-
-        assert not torch.isnan(log_p).any()
+        log_p, mask = self._get_log_p(fixed_attention, state, normalize)
 
         # Select the indices of the next nodes in the sequences, result (batch_size) long
         selected = self._select_node(
@@ -96,7 +77,28 @@ class GraphDecoder(nn.Module):
 
         return selected, log_p
 
-    def get_attention_glimpse(self, query, glimpse_K, glimpse_V, logit_K, mask):
+    def _get_log_p(self, fixed, state, normalize=True):
+        query = fixed.context_node_projected + \
+                self.project_step_context(self._get_parallel_step_context(fixed.node_embeddings,
+                                                                          state))
+
+        # Compute keys and values for the nodes
+        glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
+
+        # Compute the mask
+        mask = state.get_mask()
+
+        # Compute logits (unnormalized log_p)  
+        log_p, glimpse = self._get_attention_glimpse(query, glimpse_K, glimpse_V, logit_K, mask)
+
+        if normalize:
+            log_p = torch.log_softmax(log_p / self.temp, dim=-1)
+
+        assert not torch.isnan(log_p).any()
+
+        return log_p, mask
+
+    def _get_attention_glimpse(self, query, glimpse_K, glimpse_V, logit_K, mask):
 
         batch_size, num_steps, embed_dim = query.size()
         key_size = val_size = embed_dim // self.num_heads
@@ -275,7 +277,6 @@ class GraphDecoderVRP(GraphDecoder):
 
         :param embeddings: (batch_size, graph_size, embed_dim)
         :param prev_a: (batch_size, num_steps)
-        :param first_a: Only used when num_steps = 1, action of first step or None if first step
         :return: (batch_size, num_steps, context_dim)
         """
 
@@ -331,6 +332,7 @@ class GraphDecoderEVRP(GraphDecoder):
         num_trailers: int = 3,
         num_trucks: int = 2,
         feed_forward_hidden: int = 512,
+        features: any = (),
     ):
         """
         Args:
@@ -354,13 +356,15 @@ class GraphDecoderEVRP(GraphDecoder):
             mask_logits=mask_logits,
             W_placeholder=W_placeholder,
         )
+        self.features = features
 
-        # trailer projection
-        self.project_trailer = (
+        # trailer decoder_extraction
+        self.FF_trailer = (
             nn.Sequential(
                 nn.Linear(
-                    num_trailers * embed_dim, embed_dim
+                    num_trailers * (embed_dim + 1), embed_dim
                 ),  # trailer feature extraction
+                # add 1 more value that indicates if there is at least one charged truck on this node
                 nn.Linear(embed_dim, feed_forward_hidden),
                 nn.ReLU(),
                 nn.Linear(feed_forward_hidden, embed_dim),
@@ -370,8 +374,8 @@ class GraphDecoderEVRP(GraphDecoder):
         )
         self.select_trailer = nn.Linear(embed_dim, num_trailers)  # vehicle selection
 
-        # truck projection
-        self.project_truck = (
+        # truck decoder
+        self.FF_truck = (
             nn.Sequential(
                 nn.Linear(num_trucks * 3, embed_dim),  # truck feature extraction
                 nn.Linear(embed_dim, feed_forward_hidden),
@@ -392,12 +396,106 @@ class GraphDecoderEVRP(GraphDecoder):
         )  # TODO check without this  as well
         self.select_truck = nn.Linear(embed_dim * 2, num_trucks)  # vehicle selection
 
+        # Need to include the updated information per node in (glimpse key, glimpse value, logit key)
+        self.project_node_step = nn.Linear(len(self.features), 3 * embed_dim, bias=False)
+
+    def forward(
+        self,
+        fixed_attention: any,
+        state: any,
+        normalize=True,
+        decode_type: str = None,
+        temp: int = 1,
+    ):
+        """
+        Forward method of the Decoder
+
+        Args:
+            node_embs (torch.Tensor): Node embeddings with shape (batch_size, num_nodes, emb_dim)
+            mask (torch.Tensor, optional): Node mask with shape (batch_size, num_nodes). Defaults to None.
+            load (torch.Tensor, optional): Load of the vehicle with shape (batch_size, 1). Defaults to None.
+            C (int, optional): Hyperparameter to regularize logit calculation. Defaults to 10.
+            rollout (bool, optional): Determines if prediction is sampled or maxed. Defaults to False.
+
+        Returns:
+            torch.Tensor: Node prediction for each graph with shape (batch_size, 1)
+            torch.Tensor: Log probabilities
+        """
+        self.decode_type = decode_type
+        self.temp = temp
+
+        selected_trailer, log_trailer = self.trailer_select(state, fixed_attention.node_embeddings)
+        selected_truck, log_truck = self.truck_select(state, fixed_attention.node_embeddings, selected_trailer)
+
+        log_p, mask = self._get_log_p(fixed_attention, state, selected_trailer, selected_truck, normalize)
+
+        # Select the indices of the next nodes in the sequences, result (batch_size) long
+        selected_node = self._select_node(
+            log_p.exp()[:, 0, :], mask # mask[:, 0, :] TODO
+        )  # Squeeze out steps dimension
+        # selected = self._select_node(log_p.exp()[:, 0, :], mask[:, 0, :], state, truck,
+        #                              sequences)  # Squeeze out steps dimension
+
+        return (selected_trailer, selected_truck, selected_node), (log_trailer, log_truck, log_p[:, 0, :])
+
+    def _get_log_p(self, fixed, state, trailer, truck, normalize=True):
+        query = fixed.context_node_projected + \
+                self.project_step_context(self._get_parallel_step_context(fixed.node_embeddings,
+                                                                        state, trailer, truck))  # after project: [batch_size, 1, embed_dim]
+
+        # Compute keys and values for the nodes
+        glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
+
+        # TODO Compute the mask
+        mask = state.get_mask()  # [batch_size, 1, graph_size]
+
+        # Compute logits (unnormalized log_p)  log_p:[batch_size, num_veh, graph_size], glimpse:[batch_size, num_veh, embed_dim]
+        log_p, glimpse = self._get_attention_glimpse(query, glimpse_K, glimpse_V, logit_K, mask)
+
+        if normalize:
+            log_p = torch.log_softmax(log_p / self.temp, dim=-1)
+
+        assert not torch.isnan(log_p).any()
+
+        return log_p, mask
+
+    def _get_parallel_step_context(self, embeddings, state, trailer, truck):
+        """
+        Returns the context per step, optionally for multiple steps at once (for efficient evaluation of the model)
+
+        :param embeddings: (batch_size, graph_size, embed_dim)
+        :param prev_a: (batch_size, num_steps)
+        :return: (batch_size, num_steps, context_dim)
+        """
+
+        from_node = state.trucks_locations[state.ids, truck[:, None]].squeeze(-1)  # (batch_size, 1)
+        trailer_node_ids = state.trailers_locations[state.ids, trailer[:, None]].squeeze(-1)  # (batch_size, 1)
+        destination_node_ids = state.trailers_destinations[state.ids, trailer[:, None]].squeeze(-1)
+
+        to_node = torch.where(torch.eq(from_node, trailer_node_ids), destination_node_ids, trailer_node_ids)
+
+        # Embeddings of truck node & trailer’s destination node.
+        # In case truck and trailer are not on the same node,
+        # we use then truck and trailer nodes.
+
+        return torch.cat(
+            (
+                embeddings[state.ids, from_node.to(torch.int64)],
+                embeddings[state.ids, to_node.to(torch.int64)],
+            ),
+            -1,
+        )
+
     def _get_attention_node_data(self, fixed, state):
         # Need to provide information of how much each node has already been served
         # Clone demands as they are needed by the backprop whereas they are updated later
         glimpse_key_step, glimpse_val_step, logit_key_step = self.project_node_step(
-            state.demands_with_depot[:, :, :, None].clone()
-        ).chunk(3, dim=-1)
+            torch.cat(
+                (state.avail_chargers.clone(),
+                 state.node_trucks.clone(),
+                 state.node_trailers.clone()),
+                2)
+        )[:, None].chunk(3, dim=-1)
 
         # Projection of concatenation is equivalent to addition of projections but this is more efficient
         return (
@@ -406,4 +504,115 @@ class GraphDecoderEVRP(GraphDecoder):
             fixed.logit_key + logit_key_step,
         )
 
-    # def _get_parallel_step_context(self, embeddings, state, from_depot=False):
+    def trailer_select(self, state, embeddings):
+        batch_size, _, embedding_size = embeddings.size()
+        embeddings_extended = torch.cat((embeddings, state.node_trucks), -1)
+        trailer_embeddings = embeddings_extended.gather(
+            1, state.trailers_locations.to(torch.int64).expand(-1, -1, (embedding_size+1))
+        )
+        trailer_context = trailer_embeddings.contiguous().reshape(batch_size, -1)
+        out = self.FF_trailer(trailer_context)
+        out = self.select_trailer(out)
+
+        # TODO MASK pending trailer or trailer that have reached their destination node
+        # mask = (state.node_trailers.squeeze(-1) > 0)
+        # prob_trailer = torch.softmax(out, dim=-1)
+
+        log_trailer = torch.log_softmax(out, dim=1)  # (batch_size, num_trailer)
+
+        if self.decode_type == "greedy":
+            trailer = torch.max(torch.softmax(out, dim=1), dim=1)[
+                1
+            ]  # index of the trailer so (batch_size,)
+        elif self.decode_type == "sampling":
+            trailer = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+
+        return trailer, log_trailer
+
+    def truck_select(self, state, embeddings, trailer):
+        batch_size, _, embedding_size = embeddings.size()
+        trailer_embedding = embeddings.gather(
+            1, trailer[:, None, None].expand(-1, -1, 128)
+        )
+        trailer_out = self.FF_selected_trailer(trailer_embedding)
+
+        trucks_coords = state.coords.gather(
+            1, state.trucks_locations.contiguous().expand(-1, -1, 2).to(torch.int64)
+        ).transpose(0, 1)
+
+        trucks_battery_levels = state.trucks_battery_levels.transpose(0, 1)
+        truck_context = torch.cat(  # (batch_size, num_trucks, 3)
+            (trucks_coords[0, :],
+             trucks_battery_levels[0, :],
+             trucks_coords[1, :],
+             trucks_battery_levels[1, :],
+             ), -1
+        ).contiguous()[:, None, :]
+        truck_out = self.FF_truck(truck_context)
+
+        context = torch.cat((trailer_out, truck_out), -1).view(
+            batch_size, embedding_size * 2
+        )
+        out = self.select_truck(context)
+
+        # TODO mask trucks that do not have battery
+
+        log_truck = torch.log_softmax(out, dim=1)  # (batch_size, num_trucks)
+
+        if self.decode_type == "greedy":
+            truck = torch.max(torch.softmax(out, dim=1), dim=1)[
+                1
+            ]  # index of the truck so (batch_size,)
+        elif self.decode_type == "sampling":
+            truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+
+        return truck, log_truck
+
+    def _select_node(self, probs, mask):
+
+        assert (probs == probs).all(), "Probs should not contain any nans"
+        # selected = (state.get_current_node()).clone()
+        # batch_size, _ = (state.get_current_node()).size()
+
+        if self.decode_type == "greedy":
+            _, selected = probs.max(1)
+            # _, selected[torch.arange(batch_size), veh] = probs.max(1)
+            # assert not mask.gather( TODO
+            #     1, selected.unsqueeze(-1)
+            # ).data.any(), "Decode greedy: infeasible action has maximum probability"
+            # assert not mask.gather(-1, selected[torch.arange(batch_size), veh].unsqueeze(
+            #     -1)).data.any(), "Decode greedy: infeasible action has maximum probability"
+
+        elif self.decode_type == "sampling":
+            selected = probs.multinomial(1).squeeze(1)
+            # selected[torch.arange(batch_size), veh] = probs.multinomial(1).squeeze(
+            #   1)  # [batch_size]
+
+            # Check if sampling went OK, can go wrong due to bug on GPU
+            # See https://discuss.pytorch.org/t/bad-behavior-of-multinomial-function/10232
+            # # while mask.gather(-1, selected[torch.arange(batch_size), veh].unsqueeze(-1)).data.any():
+            # while mask.gather(1, selected.unsqueeze(-1)).data.any(): TODO
+            #     print("Sampled bad values, resampling!")
+            #     selected = probs.multinomial(1).squeeze(1)
+            #     # selected[torch.arange(batch_size), veh] = probs.multinomial(1).squeeze(1)
+        else:
+            assert False, "Unknown decode type"
+        return selected
+
+    def _make_heads(self, v, num_steps=None):
+        assert num_steps is None or v.size(1) == 1 or v.size(1) == num_steps
+
+        return (
+            v.contiguous()
+            .view(v.size(0), v.size(1), v.size(2), self.num_heads, -1)
+            .expand(
+                v.size(0),
+                v.size(1) if num_steps is None else num_steps,
+                v.size(2),
+                self.num_heads,
+                -1,
+            )
+            .permute(
+                3, 0, 1, 2, 4
+            )  # (n_heads, batch_size, num_steps, graph_size, head_dim)
+        )

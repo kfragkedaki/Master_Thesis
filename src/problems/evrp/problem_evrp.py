@@ -21,31 +21,6 @@ class EVRP(object):
     def make_state(*args, **kwargs):
         return StateEVRP.initialize(*args, **kwargs)
 
-    # def get_state(self) -> np.ndarray:
-    #     """
-    #     Getter for the current environment state
-    #
-    #     Returns:
-    #         np.ndarray: Shape (num_graph, num_nodes, 4)
-    #         where the third dimension consists of the
-    #         x, y coordinates, if the node is a depot,
-    #         and if it has been visted yet.
-    #     """
-    #
-    #     # generate state (depots not yet set)
-    #     state = np.dstack(
-    #         [
-    #             self.sampler.get_graph_positions(),
-    #             np.zeros((self.batch_size, self.num_nodes)),
-    #             self.generate_mask(),
-    #         ]
-    #     )
-    #
-    #     # set depots in state to 1
-    #     state[np.arange(len(state)), self.depots.T, 2] = 1
-    #
-    #     return state
-
     @staticmethod
     def beam_search(
         input,

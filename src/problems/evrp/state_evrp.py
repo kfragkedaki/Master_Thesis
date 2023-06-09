@@ -6,28 +6,26 @@ from src.utils.boolmask import mask_long2bool, mask_long_scatter
 class StateEVRP(NamedTuple):
     # Fixed input
     coords: torch.Tensor
-
-    # TODO Maybe not to use that but update via the graph networkx library? Seems more effective
-    avail_chargers: torch.Tensor  # Keeps the available chargers per node
-    node_trucks: torch.Tensor  # Keeps the trucks per node TODO Should I keep only the charged trucks?
-    node_trailers: torch.Tensor  # Keeps the trailers per node TODO Should I keep only the charged trucks?
+    num_chargers: torch.Tensor  # Keep track of the total number of chargers in each node
+    trailers_destinations: torch.Tensor  # trailers' destinations
+    trailers_start_time: torch.Tensor  # trailers' start_time
+    trailers_end_time: torch.Tensor  # trailers' end_time
 
     # If this state contains multiple copies (i.e. beam search) for the same instance, then for memory efficiency
     # the coords and dist tensors are not kept multiple times, so we need to use the ids to index the correct rows.
     ids: torch.Tensor  # Keeps track of original fixed data index of rows
-    num_chargers: torch.Tensor  # Keep track of the total number of chargers in each node
+
+    # State
+    avail_chargers: torch.Tensor  # Keeps the available chargers per node
+    node_trucks: torch.Tensor  # Keeps the trucks per node TODO Should I keep only the charged trucks?
+    node_trailers: torch.Tensor  # Keeps the trailers per node TODO Should I keep only the charged trucks?
+
     trucks_locations: torch.Tensor  # trucks location
     trucks_battery_levels: torch.Tensor  # trucks battery level
 
     trailers_locations: torch.Tensor  # trailers location
-    trailers_destinations: torch.Tensor  # trailers' destinations
     trailers_status: torch.Tensor  # trailers' status
-    trailers_start_time: torch.Tensor  # trailers' start_time
-    trailers_end_time: torch.Tensor  # trailers' end_time
 
-    # State
-    from_loc: torch.Tensor
-    to_loc: torch.Tensor
     visited_: torch.Tensor  # Keeps track of nodes that have been visited
     lengths: torch.Tensor
     cur_coord: torch.Tensor
@@ -35,11 +33,7 @@ class StateEVRP(NamedTuple):
 
     @property
     def visited(self):
-        pass
-        # if self.visited_.dtype == torch.uint8:
-        #     return self.visited_
-        # else:
-        #     return mask_long2bool(self.visited_, n=self.coords.size(-2))
+        return self.visited_
 
     def __getitem__(self, key):
         assert torch.is_tensor(key) or isinstance(
@@ -59,8 +53,6 @@ class StateEVRP(NamedTuple):
             trailers_status=self.trailers_status.truck[key],
             trailers_start_time=self.trailers_start_time[key],
             trailers_end_time=self.trailers_end_time[key],
-            from_loc=self.from_loc[key],
-            to_loc=self.to_loc[key],
             visited_=self.visited_[key],
             lengths=self.lengths[key],
             cur_coord=self.cur_coord[key] if self.cur_coord is not None else None,
@@ -73,11 +65,8 @@ class StateEVRP(NamedTuple):
         node_trucks = input["node_trucks"]
         node_trailers = input["node_trailers"]
 
-        batch_size, num_nodes, _ = coords.size()
-        _, num_trucks, _ = node_trucks.size()
-        _, num_trailers, _ = node_trailers.size()
-
-        prev_a = torch.zeros(batch_size, 1, dtype=torch.long, device=coords.device)
+        batch_size, num_nodes, coords_size = coords.size()
+        _, num_trucks, _ = input["trucks_locations"].size()
 
         return StateEVRP(
             coords=coords,
@@ -95,22 +84,8 @@ class StateEVRP(NamedTuple):
             trailers_status=input["trailers_status"],
             trailers_start_time=input["trailers_start_time"],
             trailers_end_time=input["trailers_end_time"],
-            from_loc=prev_a,
-            to_loc=prev_a,
             # Keep visited with depot so we can scatter efficiently (if there is an action for depot)
-            visited_=(  # Visited as mask is easier to understand, as long more memory efficient
-                torch.zeros(
-                    batch_size, 1, num_nodes, dtype=torch.uint8, device=coords.device
-                )
-                if visited_dtype == torch.uint8
-                else torch.zeros(
-                    batch_size,
-                    1,
-                    (num_nodes + 63) // 64,
-                    dtype=torch.int64,
-                    device=coords.device,
-                )  # Ceil
-            ),
+            visited_=torch.zeros(batch_size, 5, 1, dtype=torch.uint8, device=coords.device),  # Visited as mask is easier to understand, as long more memory efficient
             lengths=torch.zeros(batch_size, num_trucks, device=coords.device),
             cur_coord=None,
             i=torch.zeros(
@@ -130,16 +105,38 @@ class StateEVRP(NamedTuple):
 
     def update(self, selected):
         # TODO select truck, trailer, node and update
+        selected_trailer, selected_truck, selected_node = selected
 
-        # Update the state
-        prev_a = selected[:, None]  # Add dimension for step
+        avail_chargers = self.avail_chargers
+        trucks_locations = self.trucks_locations
+        trailers_locations = self.trailers_locations
+        trailers_status = torch.ones(size=self.trailers_status.shape) # reset values
+        node_trucks = torch.zeros(size=self.node_trucks.shape)  # reset values
+        node_trailers = torch.zeros(size=self.node_trailers.shape)  # reset values
+        trucks_battery_levels = torch.ones(size=self.trucks_battery_levels.shape) # reset values
+
+        # update truck state
+        trucks_locations[self.ids, selected_truck[:, None]] = selected_node[:, None, None].to(torch.float32)
+        trucks_battery_levels[self.ids, selected_truck[:, None]] = 0
+
+        # Calculate to_node
+        from_node = trucks_locations[self.ids, selected_truck[:, None]].squeeze(-1)  # (batch_size, 1)
+        trailer_node_ids = trailers_locations[self.ids, selected_trailer[:, None]].squeeze(-1)  # (batch_size, 1)
+        condition = torch.eq(from_node, trailer_node_ids)
+
+        # update trailer state
+        trailers_locations[self.ids, selected_trailer[:, None]] = torch.where(condition.unsqueeze(-1), selected_node[:, None, None].to(torch.float32), trailers_locations[self.ids, selected_trailer[:, None]])
+        trailers_status[self.ids, selected_trailer[:, None]] = torch.where(condition.unsqueeze(-1), 1., 0.)
+
+        # update features
+        avail_chargers[self.ids, selected_node[:, None]] = torch.where(self.num_chargers[self.ids, selected_node[:, None]]-1 > 0, 1., 0.)
+        node_trucks[self.ids[:, :, None].expand(trucks_locations.shape), trucks_locations.to(torch.int), :] = 1
+        node_trailers[self.ids[:, :, None].expand(trailers_locations.shape), trailers_locations.to(torch.int), :] = 1
 
         # Add the length
-        # cur_coord = self.loc.gather(
-        #     1,
-        #     selected[:, None, None].expand(selected.size(0), 1, self.loc.size(-1))
-        # )[:, 0, :]
-        cur_coord = self.coords[self.ids, prev_a]
+        # node_truck = self.trucks_locations.squeeze(-1).gather(1,selected_truck[:, None])
+        cur_coord = self.coords.gather(1, trucks_locations.to(torch.int64).expand(-1, -1, self.coords.shape[2]))
+
         lengths = self.lengths
         if (
             self.cur_coord is not None
@@ -150,31 +147,36 @@ class StateEVRP(NamedTuple):
 
         # Update should only be called with just 1 parallel step,
         # in which case we can check this way if we should update
-        first_a = prev_a if self.i.item() == 0 else self.first_a
 
-        if self.visited_.dtype == torch.uint8:
-            # Add one dimension since we write a single value
-            visited_ = self.visited_.scatter(-1, prev_a[:, :, None], 1)
+        timestep = torch.full_like(selected_trailer[:, None], int(self.i))
+        trailer_id = torch.where(condition, selected_trailer[:, None], torch.full_like(selected_trailer[:, None], -1))
+        visited_ = torch.stack((from_node, selected_node[:, None], selected_truck[:, None], trailer_id, timestep)).transpose(1,0)
+
+        if self.visited_.shape[-1] != int(self.i):
+            visited_ = visited_
         else:
-            visited_ = mask_long_scatter(self.visited_, prev_a)
+            visited_ = torch.cat((self.visited_, visited_), dim=-1)
 
         return self._replace(
-            from_loc=first_a,
-            to_loc=prev_a,
             visited_=visited_,
             lengths=lengths,
             cur_coord=cur_coord,
             i=self.i + 1,
-        )
+            avail_chargers=avail_chargers,
+            node_trucks=node_trucks,
+            node_trailers=node_trailers,
+            trucks_locations=trucks_locations,
+            trucks_battery_levels=trucks_battery_levels,
+            trailers_locations=trailers_locations,
+            trailers_status=trailers_status,
+         )
 
     def all_finished(self):
         # If all trailers are on their destination nodes
-        pass
-
-    def get_current_node(self):
-        return self.to_loc
+        return torch.all(torch.eq(self.trailers_locations, self.trailers_destinations))
 
     def get_mask(self):
+        # TODO
         # Mask the nodes that the truck cannot go to because of its battery limits
         # Mask the nodes on Pending mode
         pass
