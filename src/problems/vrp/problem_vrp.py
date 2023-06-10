@@ -138,7 +138,7 @@ class VRPDataset(Dataset):
         else:
 
             # From VRP with RL paper https://arxiv.org/abs/1802.04240
-            CAPACITIES = {10: 20.0, 20: 30.0, 50: 40.0, 100: 50.0}
+            CAPACITIES = {4: 10., 10: 20.0, 20: 30.0, 50: 40.0, 100: 50.0}
 
             self.data = [
                 {
@@ -157,4 +157,4 @@ class VRPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return self.data[idx], 0

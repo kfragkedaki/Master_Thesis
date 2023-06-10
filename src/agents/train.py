@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 
 from src.utils.log_utils import log_values
 from src.utils.functions import move_to, get_inner_model, set_decode_type
+from torch.utils.data._utils.collate import default_collate
 
 
 def validate(model, dataset, opts):
@@ -24,21 +25,27 @@ def validate(model, dataset, opts):
     return avg_cost
 
 
+def collate_fn(batch):
+    data_batch, graph_batch = zip(*batch)
+
+    return default_collate(data_batch), list(graph_batch)
+
+
 def rollout(model, dataset, opts):
     # Put in greedy evaluation mode!
     set_decode_type(model, "greedy")
     model.eval()
 
-    def eval_model_bat(batch_data):
+    def eval_model_bat(batch_data, graph_batch):
         with torch.no_grad():
-            cost, _ = model(move_to(batch_data, opts.device))
+            cost, _ = model(move_to(batch_data, opts.device), graphs=graph_batch)
         return cost.data.cpu()
 
     return torch.cat(
         [
-            eval_model_bat(batch_data)
-            for batch_data in tqdm(
-                DataLoader(dataset, batch_size=opts.eval_batch_size),
+            eval_model_bat(data_batch, graph_batch)
+            for (data_batch, graph_batch) in tqdm(
+                DataLoader(dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn),
                 disable=opts.no_progress_bar,
             )
         ],
@@ -159,7 +166,7 @@ def train_epoch(
 def train_batch(
     model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts
 ):
-    x, bl_val = baseline.unwrap_batch(batch)
+    x, graphs, bl_val = baseline.unwrap_batch(batch)
     x = move_to(x, opts.device)
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 

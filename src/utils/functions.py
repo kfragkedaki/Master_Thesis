@@ -3,7 +3,7 @@ import os
 import json
 import torch.nn.functional as F
 from torch.nn import DataParallel
-
+import sys
 
 def load_env(name: str):
     from src.problems import TSP, CVRP, EVRP

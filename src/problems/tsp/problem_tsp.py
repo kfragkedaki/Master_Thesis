@@ -103,4 +103,4 @@ class TSPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return self.data[idx], 0

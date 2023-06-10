@@ -12,7 +12,7 @@ class Baseline(object):
         return dataset
 
     def unwrap_batch(self, batch):
-        return batch, None
+        return batch[0], batch[1], None
 
     def eval(self, x, c):
         raise NotImplementedError("Override this method")
@@ -192,7 +192,7 @@ class RolloutBaseline(Baseline):
         )
 
     def unwrap_batch(self, batch):
-        return batch["data"], batch["baseline"].view(
+        return batch["data"][0], batch["data"][1], batch["baseline"].view(
             -1
         )  # Flatten result to undo wrapping as 2D
 
