@@ -197,6 +197,12 @@ def get_options(args=None):
         default=None,
         help="Location of the csv file to use for truck names",
     )
+    parser.add_argument(
+        "--display_graphs",
+        type=int,
+        default=3,
+        help="The number of displayed graphs during evaluation. Default None.",
+    )
 
     opts = parser.parse_args(args)
     opts.run_name = "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
@@ -209,6 +215,8 @@ def get_options(args=None):
 
     # Configure outputs dir
     os.makedirs(opts.save_dir)
+    if opts.display_graphs is not None: 
+        os.makedirs(opts.save_dir + "/graphs")
 
     with open(opts.save_dir + "/results", "w+", newline="") as file:
         writer = csv.writer(file)

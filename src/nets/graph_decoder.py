@@ -514,27 +514,60 @@ class GraphDecoderEVRP(GraphDecoder):
         out = self.FF_trailer(trailer_context)
         out = self.select_trailer(out)
 
-        # masked pending trailer or trailer that have reached their destination node
-        mask = torch.logical_and(torch.eq(state.trailers_destinations, state.trailers_locations),
-            torch.eq(state.trailers_status, torch.ones(size=state.trailers_status.shape)))
+        # masked pending trailer or trailer that have reached their destination node TODO should I include also the pending trailer?
+        # TOD0 also consider that if you add the status then you need to adjust the truck_select
+        # mask = torch.logical_or(torch.eq(state.trailers_destinations, state.trailers_locations),
+        #     torch.eq(state.trailers_status, torch.zeros(size=state.trailers_status.shape)))
+        # The purpose of the trailer status is that we do not want to bring more trailers to the node when in the previous step we have selected
+        # a truck to move towards a node, but maybe we should let the algorithm learn that from the cost and mask only the unfeasible solutions
+
+        mask = torch.eq(state.trailers_destinations, state.trailers_locations)
 
         out[mask.squeeze(-1)] = -math.inf
         log_trailer = torch.log_softmax(out, dim=1)  # (batch_size, num_trailer)
 
+        probs = torch.softmax(out, dim=1)
+        masking = torch.all(mask, dim=1).squeeze(-1)
         if self.decode_type == "greedy":
-            trailer = torch.max(torch.softmax(out, dim=1), dim=1)[
-                1
-            ]  # index of the trailer so (batch_size,)
+            _, trailer = probs.max(1)  # index of the trailer so (batch_size,)
+            trailer[masking] = -1  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
+            
+            assert not mask.squeeze(-1).gather(
+                1, trailer.unsqueeze(-1)
+            ).data.any(), f"Decode greedy: infeasible action has maximum probability for trailer {out}"
+
         elif self.decode_type == "sampling":
-            trailer = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+            trailer = torch.full((batch_size,), -1)  # TODO check with Jonas
+            trailer[~masking] = probs[~masking].multinomial(1).squeeze(1)
+            # trailer = probs.multinomial(1).squeeze(-1) # TODO same as above, (but if all nans does not work ith multinomial)
+
+            while mask[~masking].squeeze(-1).gather(1, trailer[~masking].unsqueeze(-1)).data.any():
+                print("Sampled bad values, resampling for trailer!")
+                trailer[~masking] = probs[~masking].multinomial(
+                    1).squeeze(1)
+        else:
+            assert False, "Unknown decode type"
+
+        # TODO based on the above code, we currently have nans when a batch has ended
+        # assert not torch.isnan(log_trailer).any(), "Zero probabilities for truck"
 
         return trailer, log_trailer
 
     def truck_select(self, state, embeddings, trailer):
         batch_size, _, embedding_size = embeddings.size()
-        trailer_embedding = embeddings.gather(
-            1, trailer[:, None, None].expand(-1, -1, 128)
-        )
+        # trailer_embedding = embeddings.gather(
+        #     1, trailer[:, None, None].expand(-1, -1, 128)
+        # ) TODO check
+        trailer_embeddings = []
+        for i in range(batch_size):
+            if trailer[i] == -1:
+                # No trailer for this batch, use a zeroed-out embedding
+                trailer_embeddings.append(torch.zeros(1, embedding_size).to(embeddings.device))
+            else:
+                # A valid trailer exists for this batch, calculate its embedding
+                trailer_embeddings.append(embeddings[i, trailer[i]].view(1, -1))
+
+        trailer_embedding = torch.cat(trailer_embeddings, dim=0).unsqueeze(1)
         trailer_out = self.FF_selected_trailer(trailer_embedding)
 
         trucks_coords = state.coords.gather(
@@ -562,14 +595,34 @@ class GraphDecoderEVRP(GraphDecoder):
 
         log_truck = torch.log_softmax(out, dim=1)  # (batch_size, num_trucks)
 
+        probs = torch.softmax(out, dim=1)
+        masking = torch.all(mask, dim=1).squeeze(-1)
         if self.decode_type == "greedy":
-            truck = torch.max(torch.softmax(out, dim=1), dim=1)[
-                1
-            ]  # index of the truck so (batch_size,)
-        elif self.decode_type == "sampling":
-            truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+            _, truck = probs.max(1)  # index of the truck so (batch_size,)
+            truck[masking] = -1  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
+            assert not mask.squeeze(-1).gather(
+                1, truck.unsqueeze(-1)
+            ).data.any(), "Decode greedy: infeasible action has maximum probability for truck"
 
-        # truck[torch.all(mask, dim=1).squeeze(-1)] = -1  # TODO without this it can only work with two trucks so as to be at least one charges
+        elif self.decode_type == "sampling":
+            # truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
+            # while mask.squeeze(-1).gather(1, truck.unsqueeze(-1)).data.any():
+            #     print("Sampled bad values, resampling for truck!")
+            #     truck = truck.multinomial(1).squeeze(1)
+
+            truck = torch.full((batch_size,), -1)  # TODO check with Jonas
+            truck[~masking] = probs[~masking].multinomial(1).squeeze(1)
+
+            while mask[~masking].squeeze(-1).gather(1, truck[~masking].unsqueeze(-1)).data.any():
+                print("Sampled bad values, resampling for truck!")
+                truck[~masking] = probs[~masking].multinomial(
+                    1).squeeze(1)
+        else:
+            assert False, "Unknown decode type"
+
+        # truck[torch.all(mask, dim=1).squeeze(-1)] = -1  # TODO if limited chargers in a node, then all trucks are masked
+        # assert not torch.isnan(log_truck).any(), "Zero probabilities for truck"
+
         return truck, log_truck
 
     def _select_node(self, probs, mask):
@@ -587,16 +640,12 @@ class GraphDecoderEVRP(GraphDecoder):
 
         elif self.decode_type == "sampling":
             selected = probs.multinomial(1).squeeze(1)
-            # selected[torch.arange(batch_size), veh] = probs.multinomial(1).squeeze(
-            #   1)  # [batch_size]
 
             # Check if sampling went OK, can go wrong due to bug on GPU
             # See https://discuss.pytorch.org/t/bad-behavior-of-multinomial-function/10232
-            # # while mask.gather(-1, selected[torch.arange(batch_size), veh].unsqueeze(-1)).data.any():
             while mask.gather(1, selected.unsqueeze(-1)).data.any():
                 print("Sampled bad values, resampling!")
                 selected = probs.multinomial(1).squeeze(1)
-            #     # selected[torch.arange(batch_size), veh] = probs.multinomial(1).squeeze(1)
         else:
             assert False, "Unknown decode type"
         return selected
