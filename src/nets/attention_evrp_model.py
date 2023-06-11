@@ -50,6 +50,7 @@ class AttentionEVRPModel(nn.Module):
 
         self.decode_type = None
         self.temp = 1.0
+        self.opts = opts
 
         self.problem = problem  # env
         self.n_heads = n_heads
@@ -129,20 +130,22 @@ class AttentionEVRPModel(nn.Module):
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         fixed = self._precompute(embeddings)
 
+        self.get_graphs()
         # Perform decoding steps
         i = 0
         while not state.all_finished():
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
+            previous_state = state
             state = state.update(selected)
 
-            self.graphs.visit_edges(tensor_to_tuples(state.visited_))
-            self.graphs.draw(graph_idxs=range(3), with_labels=True)
+            self.get_graphs(state=state, previous_state=previous_state, selected=selected)
 
             # Collect output of step
             outputs.append(log_p)
             sequences.append(selected)
+            print(selected)
 
             i += 1
 
@@ -241,15 +244,22 @@ class AttentionEVRPModel(nn.Module):
         # the lookup once... this is the case if all elements in the batch have maximum batch size
         return CachedLookup(self._precompute(embeddings))
 
+    def get_graphs(self, state=None, previous_state=None, selected=None):
+          file = self.opts.save_dir + "/graphs"
+          if self.opts.display_graphs is not None:
+            if state is not None and selected is not None and previous_state is not None:
+                selected += (state.i,)
+                self.graphs.visit_edges(tensor_to_tuples(state.visited_))
+                self.graphs.update_attributes(state, previous_state)
+                self.graphs.draw(graph_idxs=range(self.opts.display_graphs), selected=selected, with_labels=True, file=file)
+            else:
+                self.graphs.draw(graph_idxs=range(self.opts.display_graphs), with_labels=True, file=file)
 
 def tensor_to_tuples(tensor):
     batch_size, features, time = tensor.shape
     edges = []
     for b in range(batch_size):
-        batch_list = []
-        for t in range(time):
-            time_list = tuple(tensor[b, :, t].tolist())
-            batch_list.append(time_list)
-        edges.append(batch_list)
+        batch_list = tuple(tensor[b, :, time-1].tolist())
+        edges.append([batch_list])
 
     return edges

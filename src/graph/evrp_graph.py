@@ -61,7 +61,7 @@ class EVRPGraph:
             coords = dict(enumerate(np.random.rand(self.num_nodes, 2)))
         if num_chargers is None:
             num_chargers = dict(
-                enumerate(np.random.randint(low=1, high=10, size=self.num_nodes))
+                enumerate(np.random.randint(low=1, high=5, size=self.num_nodes))
             )
         if trailers_locations is None:
             trailers_locations = np.random.choice(self.graph.nodes, self.num_trailers)
@@ -93,7 +93,7 @@ class EVRPGraph:
         nx.set_node_attributes(self.graph, num_chargers, name="available_chargers")
         nx.set_node_attributes(self.graph, None, name="trailers")
         nx.set_node_attributes(self.graph, None, name="trucks")
-        nx.set_node_attributes(self.graph, "black", "node_color")
+        nx.set_node_attributes(self.graph, "lightblue", "node_color")
 
         for i, node_id in enumerate(trailers_locations):
             if self.graph.nodes[node_id]["trailers"] is None:
@@ -211,13 +211,13 @@ class EVRPGraph:
             )
 
             node_num_chargers = {
-                node_id: f"{avail_charg} / {num_charg}"
+                node_id: f"{avail_charg} / {num_charg}, \n {node_id}"
                 for (node_id, num_charg), avail_charg in zip(
                     node_num_chargers.items(), node_available_chargers.values()
                 )
             }
             nx.draw_networkx_labels(
-                self.graph, pos=pos, labels=node_num_chargers, ax=ax, font_size=8
+                self.graph, pos=pos, labels=node_num_chargers, ax=ax, font_size=6
             )
             # trucks
             label_offset = np.array([0, 0.09])
@@ -318,32 +318,43 @@ class EVRPGraph:
             timestamp (src): Timestamp id of the edge
         """
         for source_node, target_node, truck, trailer, timestamp in data:
-            # trucks = self.graph.nodes.data()[source_node]["trucks"]
-            # trailers = self.graph.nodes.data()[source_node]["trailers"]
+            source_node = int(source_node)
+            target_node = int(target_node)
+            if source_node == -1:
+                source_node = target_node
 
-            # TODO FOR DEBUGGING REASONS REMOVE
-            # if not bool(trucks) or (bool(trucks) and truck not in trucks.keys()):
-            #     # do not add an edge when the truck is not already in the source node
-            #     continue
-            # elif not bool(trailers) or (
-            #     bool(trailers) and trailer not in trailers.keys()
-            # ):
-            #     # do not add trailer when it is not already in the source node, move just the truck
-            #     trailer = None
-
+            trucks = self.graph.nodes.data()[source_node]["trucks"]
+            trailers = self.graph.nodes.data()[source_node]["trailers"]
+            
+            # check trailer
             if trailer == -1 or trailer == None:
-                trailer = None
+                trailer_id = None
             else:
-                trailer = f"Trailer {int(trailer)}"
+                trailer_id = f"Trailer {int(trailer)}"
+                assert not (not bool(trailers) or (
+                        bool(trailers) and trailer_id not in trailers.keys()
+                )), "Trailer when it is not in the source node, "
 
-            trucks = get_truck_names(file=self.truck_names)
+                assert not(
+                        bool(trailers) and source_node == trailers[trailer_id]["destination_node"]
+                ), "Trailer in destination node"
+
+            # check truck
+            if truck == -1 or truck == None:
+                truck_id = None
+            else:
+                truck_names = get_truck_names(file=self.truck_names)
+                truck_id = f"Truck {truck_names[int(truck)]}"
+
+                assert not (not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())), \
+                    f"The truck is not in the source node, {truck_id}"
 
             self.graph.add_edges_from(
                 [
                     (
-                        int(source_node),
-                        int(target_node),
-                        {"truck": f"Truck {trucks[int(truck)]}", "trailer": trailer, "timestamp": int(timestamp)},
+                        source_node,
+                        target_node,
+                        {"truck": truck_id, "trailer": trailer_id, "timestamp": int(timestamp)},
                     )
                 ]
             )
@@ -420,7 +431,7 @@ class EVRPGraph:
 if __name__ == "__main__":
     fig, ax = plt.subplots()
 
-    G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2)
+    G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True)
     # add edges that where visited
     edges = [
         (0, 3, 1, 1, 1),
