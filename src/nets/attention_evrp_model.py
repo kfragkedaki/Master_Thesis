@@ -92,14 +92,15 @@ class AttentionEVRPModel(nn.Module):
         :return:
         """
 
-        self.graphs = EVRPNetwork(
-            num_graphs=graphs[0].num_nodes,
-            num_nodes=graphs[0].num_nodes,
-            num_trucks=graphs[0].num_trucks,
-            num_trailers=graphs[0].num_trailers,
-            truck_names=graphs[0].truck_names,
-            plot_attributes=True,
-            graphs=graphs)
+        if len(graphs) > 0:
+            self.graphs = EVRPNetwork(
+                num_graphs=graphs[0].num_nodes,
+                num_nodes=graphs[0].num_nodes,
+                num_trucks=graphs[0].num_trucks,
+                num_trailers=graphs[0].num_trailers,
+                truck_names=graphs[0].truck_names,
+                plot_attributes=True,
+                graphs=graphs)
 
         if (
             self.checkpoint_encoder and self.training
@@ -111,21 +112,24 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["input"] = input["coords"].cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
-        _log_p, pi = self.step(input, embeddings)
+        cost, pi, _log_trailers, _log_trucks, _log_nodes = self.step(input, embeddings)
 
-        cost, mask = self.problem.get_costs(input, pi)
+        # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
-        acc_log_prob = self._calc_log_likelihood(_log_p, pi, mask)
+        ll_trailer, ll_truck, ll_node = self._calc_log_likelihood(_log_trailers, _log_trucks, _log_nodes, pi)
         if return_pi:
-            return cost, acc_log_prob, pi
+            return cost,  (ll_trailer, ll_truck, ll_node), pi
 
-        return cost, acc_log_prob  # tensor(batch_size) both
+        return cost,  (ll_trailer, ll_truck, ll_node)  # tensor(batch_size) both
 
     def step(self, input, embeddings):
-        outputs = []  # [(log_trailer, log_truck, log_node)]
-        sequences = []  # [(from_node, to_node, truck_id, trailer_id, timestep=i)] BUT BE carefull trailer_id should be None when trailer not on the same node as truck
-
+        outputs_trailers = []  # [(log_trailer, log_truck, log_node)]
+        outputs_trucks = []
+        outputs_nodes = []
+        sequences_trailers = []  # [(from_node, to_node, truck_id, trailer_id, timestep=i)]
+        sequences_trucks = []
+        sequences_nodes = []
         state = self.problem.make_state(input)
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         fixed = self._precompute(embeddings)
@@ -134,41 +138,54 @@ class AttentionEVRPModel(nn.Module):
         # Perform decoding steps
         i = 0
         while not state.all_finished():
-            selected, log_p = self.decoder(
+            (trailer, truck, node), (log_trailer, log_truck, log_p) = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
             previous_state = state
-            state = state.update(selected)
+            state = state.update(trailer, truck, node)
 
-            self.get_graphs(state=state, previous_state=previous_state, selected=selected)
+            self.get_graphs(state=state, previous_state=previous_state, selected=(trailer, truck, node, i))
 
             # Collect output of step
-            outputs.append(log_p)
-            sequences.append(selected)
-            print(selected)
+            outputs_trailers.append(log_trailer)
+            outputs_trucks.append(log_truck)
+            outputs_nodes.append(log_p)
+
+            sequences_trailers.append(trailer)
+            sequences_trucks.append(truck)
+            sequences_nodes.append(node)
 
             i += 1
 
+        print("!!!!!!!!!!!DONE!!!!!!!!! ", i)
         # Collected lists, return Tensor
-        return torch.stack(outputs, 1), torch.stack(
-            sequences, 1
-        )  # (batch_size, i, graph size) and (batch_size, graph size)
+        return state.lengths, state.visited_.transpose(0, 1),\
+            torch.stack(outputs_trailers, 1),\
+            torch.stack(outputs_trucks, 1),\
+            torch.stack(outputs_nodes, 1),
+        # return torch.stack(outputs_trailers, 1), # (batch_size, i, graph size)
+        # torch.stack(outputs_trucks, 1),
+        # torch.stack(outputs_nodes, 1),
+        # torch.stack(sequences_trailers, 1), # (batch_size, graph size)
+        # torch.stack(sequences_trucks, 1),
+        # torch.stack(sequences_nodes, 1),
+        # state.visited_,
+        # state.lengths
 
-    def _calc_log_likelihood(self, _log_p, a, mask):
+    def _calc_log_likelihood(self, _log_trailers, _log_trucks, _log_nodes, pi):
+        trailer, truck, node, _, _ = pi
 
-        # Get log_p corresponding to selected actions
-        log_p = _log_p.gather(2, a.unsqueeze(-1)).squeeze(-1)
-
-        # Optional: mask out actions irrelevant to objective so they do not get reinforced
-        if mask is not None:
-            log_p[mask] = 0
-
-        assert (
-            log_p > -1000
-        ).data.all(), "Logprobs should not be -inf, check sampling procedure!"
+        # # Get log_p corresponding to selected actions TODO fix!
+        # log_trailers = _log_trailers.gather(2, trailer.unsqueeze(-1)).squeeze(-1)
+        # log_trucks = _log_trucks.gather(2, truck.unsqueeze(-1)).squeeze(-1)
+        # log_nodes = _log_nodes.gather(2, node.unsqueeze(-1)).squeeze(-1)
+        #
+        # assert (
+        #     log_nodes > -1000
+        # ).data.all(), "Logprobs should not be -inf, check sampling procedure!"
 
         # Calculate log_likelihood
-        return log_p.sum(1)
+        return _log_trailers.sum(1), _log_trucks.sum(1), _log_nodes.sum(1)
 
     def _precompute(self, embeddings, num_steps=1):
 
@@ -248,12 +265,12 @@ class AttentionEVRPModel(nn.Module):
           file = self.opts.save_dir + "/graphs"
           if self.opts.display_graphs is not None:
             if state is not None and selected is not None and previous_state is not None:
-                selected += (state.i,)
                 self.graphs.visit_edges(tensor_to_tuples(state.visited_))
                 self.graphs.update_attributes(state, previous_state)
                 self.graphs.draw(graph_idxs=range(self.opts.display_graphs), selected=selected, with_labels=True, file=file)
             else:
                 self.graphs.draw(graph_idxs=range(self.opts.display_graphs), with_labels=True, file=file)
+
 
 def tensor_to_tuples(tensor):
     batch_size, features, time = tensor.shape
