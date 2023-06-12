@@ -316,11 +316,12 @@ class EVRPGraph:
             trailer (src): Trailer id of the edge
             timestamp (src): Timestamp id of the edge
         """
-        for (source_node, target_node, truck, trailer, timestamp) in data:
+        for source_node, target_node, truck, trailer, timestamp in data:
             source_node = int(source_node)
             target_node = int(target_node)
 
-            if source_node == -1 or target_node == -1: continue
+            if source_node == -1 or target_node == -1:
+                continue
 
             trucks = self.graph.nodes.data()[source_node]["trucks"]
             trailers = self.graph.nodes.data()[source_node]["trailers"]

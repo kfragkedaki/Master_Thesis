@@ -179,20 +179,34 @@ class AttentionEVRPModel(nn.Module):
         _, node, truck, trailer, _ = pi
 
         # # Get log_p corresponding to selected actions TODO fix!
-        mask_trailers = (trailer == -1)
+        mask_trailers = trailer == -1
         index = torch.where(mask_trailers, torch.zeros_like(trailer), trailer)
-        gathered_log_trailers = _log_trailers.gather(2, index.unsqueeze(-1).to(torch.int64)).squeeze(-1)
-        log_trailers = torch.where(mask_trailers, torch.zeros_like(gathered_log_trailers), gathered_log_trailers)
+        gathered_log_trailers = _log_trailers.gather(
+            2, index.unsqueeze(-1).to(torch.int64)
+        ).squeeze(-1)
+        log_trailers = torch.where(
+            mask_trailers,
+            torch.zeros_like(gathered_log_trailers),
+            gathered_log_trailers,
+        )
 
-        mask_trucks = (truck == -1)
+        mask_trucks = truck == -1
         index_truck = torch.where(mask_trucks, torch.zeros_like(truck), truck)
-        gathered_log_trucks = _log_trucks.gather(2, index_truck.unsqueeze(-1).to(torch.int64)).squeeze(-1)
-        log_trucks = torch.where(mask_trucks, torch.zeros_like(gathered_log_trucks), gathered_log_trucks)
+        gathered_log_trucks = _log_trucks.gather(
+            2, index_truck.unsqueeze(-1).to(torch.int64)
+        ).squeeze(-1)
+        log_trucks = torch.where(
+            mask_trucks, torch.zeros_like(gathered_log_trucks), gathered_log_trucks
+        )
 
-        mask_nodes = (node == -1)
+        mask_nodes = node == -1
         index_node = torch.where(mask_nodes, torch.zeros_like(node), node)
-        gathered_log_nodes = _log_nodes.gather(2, index_node.unsqueeze(-1).to(torch.int64)).squeeze(-1)
-        log_nodes = torch.where(mask_nodes, torch.zeros_like(gathered_log_nodes), gathered_log_nodes)
+        gathered_log_nodes = _log_nodes.gather(
+            2, index_node.unsqueeze(-1).to(torch.int64)
+        ).squeeze(-1)
+        log_nodes = torch.where(
+            mask_nodes, torch.zeros_like(gathered_log_nodes), gathered_log_nodes
+        )
 
         # Calculate log_likelihood
         return log_trailers.sum(1), log_trucks.sum(1), log_nodes.sum(1)  # (batch_size,)
