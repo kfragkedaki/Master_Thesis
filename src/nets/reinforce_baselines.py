@@ -3,7 +3,8 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from scipy.stats import ttest_rel
 import copy
-from train import rollout, get_inner_model
+from src.agents.train import rollout
+from src.utils import get_inner_model
 
 
 class Baseline(object):
@@ -11,7 +12,7 @@ class Baseline(object):
         return dataset
 
     def unwrap_batch(self, batch):
-        return batch, None
+        return batch[0], batch[1], None
 
     def eval(self, x, c):
         raise NotImplementedError("Override this method")
@@ -55,7 +56,6 @@ class WarmupBaseline(Baseline):
         return self.warmup_baseline.unwrap_batch(batch)
 
     def eval(self, x, c):
-
         if self.alpha == 1:
             return self.baseline.eval(x, c)
         if self.alpha == 0:
@@ -96,7 +96,6 @@ class ExponentialBaseline(Baseline):
         self.v = None
 
     def eval(self, x, c):
-
         if self.v is None:
             v = c.mean()
         else:
@@ -140,10 +139,10 @@ class CriticBaseline(Baseline):
 
 
 class RolloutBaseline(Baseline):
-    def __init__(self, model, problem, opts, epoch=0):
+    def __init__(self, model, env, opts, epoch=0):
         super(Baseline, self).__init__()
 
-        self.problem = problem
+        self.env = env
         self.opts = opts
 
         self._update_model(model, epoch)
@@ -151,14 +150,14 @@ class RolloutBaseline(Baseline):
     def _update_model(self, model, epoch, dataset=None):
         self.model = copy.deepcopy(model)
         # Always generate baseline dataset when updating model to prevent overfitting to the baseline dataset
-
+        # assert dataset is not None, "No dataset provided"
         if dataset is not None:
             if len(dataset) != self.opts.val_size:
                 print(
                     "Warning: not using saved baseline dataset since val_size does not match"
                 )
                 dataset = None
-            elif (dataset[0] if self.problem.NAME == "tsp" else dataset[0]["loc"]).size(
+            elif (dataset[0] if self.env.NAME == "tsp" else dataset[0]["loc"]).size(
                 0
             ) != self.opts.graph_size:
                 print(
@@ -167,10 +166,13 @@ class RolloutBaseline(Baseline):
                 dataset = None
 
         if dataset is None:
-            self.dataset = self.problem.make_dataset(
+            self.dataset = self.env.make_dataset(
                 size=self.opts.graph_size,
                 num_samples=self.opts.val_size,
                 distribution=self.opts.data_distribution,
+                num_trucks=self.opts.num_trucks,
+                num_trailers=self.opts.num_trailers,
+                truck_names=self.opts.truck_names,
             )
         else:
             self.dataset = dataset
@@ -188,8 +190,10 @@ class RolloutBaseline(Baseline):
         )
 
     def unwrap_batch(self, batch):
-        return batch["data"], batch["baseline"].view(
-            -1
+        return (
+            batch[0],
+            batch[1],
+            batch[2].view(-1),
         )  # Flatten result to undo wrapping as 2D
 
     def eval(self, x, c):
@@ -248,7 +252,7 @@ class BaselineDataset(Dataset):
         assert len(self.dataset) == len(self.baseline)
 
     def __getitem__(self, item):
-        return {"data": self.dataset[item], "baseline": self.baseline[item]}
+        return {"data": self.dataset[item][0], "graphs": self.dataset[item][1], "baseline": self.baseline[item]}
 
     def __len__(self):
         return len(self.dataset)

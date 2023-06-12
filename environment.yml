@@ -1,0 +1,18 @@
+# run: conda env create --file environment.yml
+name: rl_thesis_2023
+channels:
+- pytorch
+dependencies:
+- python>=3.9
+- anaconda
+- tqdm
+- scipy
+- matplotlib
+- numpy
+- black
+- flake8
+- pytest
+- pip
+- pip:
+  - tensorboard_logger
+  - tensorflow

@@ -1,28 +1,43 @@
 import torch
-import numpy as np
 import os
 import json
-from tqdm import tqdm
-from multiprocessing.dummy import Pool as ThreadPool
-from multiprocessing import Pool
 import torch.nn.functional as F
+from torch.nn import DataParallel
+import sys
 
 
-def load_problem(name):
-    from problems import TSP
+def load_env(name: str):
+    from src.problems import TSP, CVRP, EVRP
 
     problem = {
         "tsp": TSP,
-        # 'evrp': EVRP,
+        "cvrp": CVRP,
+        "evrp": EVRP,
     }.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
     return problem
+
+
+def load_attention_model(name: str):
+    from src.nets import AttentionTSPModel, AttentionVRPModel, AttentionEVRPModel
+
+    model = {
+        "tsp": AttentionTSPModel,
+        "cvrp": AttentionVRPModel,
+        "evrp": AttentionEVRPModel,
+    }.get(name, None)
+    assert model is not None, "Currently unsupported problem: {}!".format(name)
+    return model
 
 
 def move_to(var, device):
     if isinstance(var, dict):
         return {k: move_to(v, device) for k, v in var.items()}
     return var.to(device)
+
+
+def get_inner_model(model):
+    return model.module if isinstance(model, DataParallel) else model
 
 
 def torch_load_cpu(load_path):
@@ -72,8 +87,6 @@ def load_args(filename):
 
 
 def load_model(path, epoch=None):
-    from nets.attention_model import AttentionModel
-
     if os.path.isfile(path):
         model_filename = path
         path = os.path.dirname(model_filename)
@@ -90,24 +103,21 @@ def load_model(path, epoch=None):
 
     args = load_args(os.path.join(path, "args.json"))
 
-    problem = load_problem(args["problem"])
+    problem = load_env(args["problem"])
 
-    model_class = {"attention": AttentionModel}.get(
-        args.get("model", "attention"), None
-    )
+    model_class = load_attention_model(args["problem"])
+
     assert model_class is not None, "Unknown model: {}".format(model_class)
 
     model = model_class(
-        args["embedding_dim"],
-        args["hidden_dim"],
-        problem,
+        embedding_dim=args["embedding_dim"],
+        problem=problem,
         n_encode_layers=args["n_encode_layers"],
         mask_inner=True,
         mask_logits=True,
         normalization=args["normalization"],
         tanh_clipping=args["tanh_clipping"],
         checkpoint_encoder=args.get("checkpoint_encoder", False),
-        shrink_size=args.get("shrink_size", None),
     )
     # Overwrite model parameters by parameters to load
     load_data = torch_load_cpu(model_filename)
@@ -161,3 +171,31 @@ def sample_many(inner_func, get_cost_func, input, batch_rep=1, iter_rep=1):
     minpis = pis[torch.arange(pis.size(0), out=argmincosts.new()), argmincosts]
 
     return minpis, mincosts
+
+
+def set_decode_type(model, decode_type):
+    if isinstance(model, DataParallel):
+        model = model.module
+    model.set_decode_type(decode_type)
+
+
+def get_baseline_model(model, env, opts, load_data):
+    from src.nets.reinforce_baselines import NoBaseline, WarmupBaseline, RolloutBaseline
+
+    # Initialize baseline
+    if opts.baseline == "rollout":
+        baseline_model = RolloutBaseline(model, env, opts)
+    else:
+        assert opts.baseline is None, "Unknown baseline: {}".format(opts.baseline)
+        baseline_model = NoBaseline()
+
+    if opts.bl_warmup_epochs > 0:
+        baseline_model = WarmupBaseline(
+            baseline_model, opts.bl_warmup_epochs, warmup_exp_beta=opts.exp_beta
+        )
+
+    # Load baseline from data, make sure script is called with same type of baseline
+    if "baseline" in load_data:
+        baseline_model.load_state_dict(load_data["baseline"])
+
+    return baseline_model

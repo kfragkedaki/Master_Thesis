@@ -2,12 +2,12 @@ from torch.utils.data import Dataset
 import torch
 import os
 import pickle
-from problems.tsp.state_tsp import StateTSP
-from utils.beam_search import beam_search
+from src.problems.tsp.state_tsp import StateTSP
+from src.utils.beam_search import beam_search
+from src.graph.tsp_network import Network
 
 
 class TSP(object):
-
     NAME = "tsp"
 
     @staticmethod
@@ -24,7 +24,9 @@ class TSP(object):
         # Length is distance (L2-norm of difference) from each next location from its prev and of last from first
         return (d[:, 1:] - d[:, :-1]).norm(p=2, dim=2).sum(1) + (
             d[:, 0] - d[:, -1]
-        ).norm(p=2, dim=1), None
+        ).norm(
+            p=2, dim=1
+        ), None  # np.linalg.norm(node_one_pos - node_two_pos) ?get_distances(self, paths)?
 
     @staticmethod
     def make_dataset(*args, **kwargs):
@@ -43,7 +45,6 @@ class TSP(object):
         model=None,
         max_calc_batch_size=4096,
     ):
-
         assert model is not None, "Provide model"
 
         fixed = model.precompute_fixed(input)
@@ -66,7 +67,13 @@ class TSP(object):
 
 class TSPDataset(Dataset):
     def __init__(
-        self, filename=None, size=50, num_samples=1000000, offset=0, distribution=None
+        self,
+        filename=None,
+        size=50,
+        num_samples=1000000,
+        offset=0,
+        distribution=None,
+        **kwargs
     ):
         super(TSPDataset, self).__init__()
 
@@ -81,10 +88,12 @@ class TSPDataset(Dataset):
                     for row in (data[offset : offset + num_samples])
                 ]
         else:
-            # Sample points randomly in [0, 1] square
-            self.data = [
-                torch.FloatTensor(size, 2).uniform_(0, 1) for i in range(num_samples)
-            ]
+            self.sampler = Network(
+                num_graphs=num_samples,
+                num_nodes=size,
+                num_depots=1,
+            )
+            self.data = self.sampler.get_graph_positions()
 
         self.size = len(self.data)
 
@@ -92,4 +101,4 @@ class TSPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return self.data[idx], 0

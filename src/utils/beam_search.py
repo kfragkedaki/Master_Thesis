@@ -1,7 +1,7 @@
 import time
 import torch
 from typing import NamedTuple
-from utils.lexsort import torch_lexsort
+from src.utils.lexsort import torch_lexsort
 
 
 def beam_search(*args, **kwargs):
@@ -29,7 +29,6 @@ def get_beam_search_results(beams, final_state):
 
 
 def _beam_search(state, beam_size, propose_expansions=None, keep_states=False):
-
     beam = BatchBeam.initialize(state)
 
     # Initial state
@@ -37,7 +36,6 @@ def _beam_search(state, beam_size, propose_expansions=None, keep_states=False):
 
     # Perform decoding steps
     while not beam.all_finished():
-
         # Use the model to propose and score expansions
         parent, action, score = (
             beam.propose_expansions()
@@ -84,16 +82,11 @@ class BatchBeam(NamedTuple):
             key, slice
         )  # If tensor, idx all tensors by this tensor:
         return self._replace(
-            # ids=self.ids[key],
             score=self.score[key] if self.score is not None else None,
             state=self.state[key],
             parent=self.parent[key] if self.parent is not None else None,
             action=self.action[key] if self.action is not None else None,
         )
-
-    # Do not use __len__ since this is used by namedtuple internally and should be number of fields
-    # def __len__(self):
-    #     return len(self.ids)
 
     @staticmethod
     def initialize(state):
@@ -202,7 +195,6 @@ def segment_topk_idx(x, k, ids):
 
 
 def backtrack(parents, actions):
-
     # Now backtrack to find aligned action sequences in reversed order
     cur_parent = parents[-1]
     reversed_aligned_sequences = [actions[-1]]

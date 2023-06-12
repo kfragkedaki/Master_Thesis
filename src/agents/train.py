@@ -5,15 +5,10 @@ import torch
 import math
 
 from torch.utils.data import DataLoader
-from torch.nn import DataParallel
 
-from nets.attention_model import set_decode_type
-from utils.log_utils import log_values
-from utils import move_to
-
-
-def get_inner_model(model):
-    return model.module if isinstance(model, DataParallel) else model
+from src.utils.log_utils import log_values
+from src.utils.functions import move_to, get_inner_model, set_decode_type
+from torch.utils.data._utils.collate import default_collate
 
 
 def validate(model, dataset, opts):
@@ -30,21 +25,38 @@ def validate(model, dataset, opts):
     return avg_cost
 
 
+def collate_fn(batch):
+    batch_size = len(batch[0])
+
+    if batch_size == 2:
+        data_batch, graph_batch = zip(*batch)
+
+        return default_collate(data_batch), list(graph_batch)
+
+    if batch_size == 3:
+        data_batch = [item['data'] for item in batch]
+        graph_batch = [item['graphs'] for item in batch]
+        baseline = [item['baseline'] for item in batch]
+
+        return default_collate(data_batch), list(graph_batch), default_collate(baseline)
+
 def rollout(model, dataset, opts):
     # Put in greedy evaluation mode!
     set_decode_type(model, "greedy")
     model.eval()
 
-    def eval_model_bat(bat):
+    def eval_model_bat(batch_data, graph_batch):
         with torch.no_grad():
-            cost, _ = model(move_to(bat, opts.device))
+            cost, _ = model(move_to(batch_data, opts.device), graphs=graph_batch)
         return cost.data.cpu()
 
     return torch.cat(
         [
-            eval_model_bat(bat)
-            for bat in tqdm(
-                DataLoader(dataset, batch_size=opts.eval_batch_size),
+            eval_model_bat(data_batch, graph_batch)
+            for (data_batch, graph_batch) in tqdm(
+                DataLoader(
+                    dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
+                ),
                 disable=opts.no_progress_bar,
             )
         ],
@@ -77,7 +89,15 @@ def clip_grad_norms(param_groups, max_norm=math.inf):
 
 
 def train_epoch(
-    model, optimizer, baseline, lr_scheduler, epoch, val_dataset, problem, opts
+    model,
+    optimizer,
+    baseline,
+    lr_scheduler,
+    epoch,
+    val_dataset,
+    problem,
+    tb_logger,
+    opts,
 ):
     print(
         "Start train epoch {}, lr={} for run {}".format(
@@ -87,27 +107,39 @@ def train_epoch(
     step = epoch * (opts.epoch_size // opts.batch_size)
     start_time = time.time()
 
+    if not opts.no_tensorboard:
+        tb_logger["logger"].log_value(
+            "learnrate_pg0", optimizer.param_groups[0]["lr"], step
+        )
+
     # Generate new training data for each epoch
     training_dataset = baseline.wrap_dataset(
         problem.make_dataset(
             size=opts.graph_size,
             num_samples=opts.epoch_size,
             distribution=opts.data_distribution,
+            num_trucks=opts.num_trucks,
+            num_trailers=opts.num_trailers,
+            truck_names=opts.truck_names,
         )
     )
     training_dataloader = DataLoader(
-        training_dataset, batch_size=opts.batch_size, num_workers=1
+        training_dataset,
+        batch_size=opts.batch_size,
+        num_workers=1,
+        collate_fn=collate_fn,
     )
 
     # Put model in train mode!
     model.train()
     set_decode_type(model, "sampling")
 
-    for batch_id, batch in enumerate(
+    for batch_id, data_batch in enumerate(
         tqdm(training_dataloader, disable=opts.no_progress_bar)
     ):
-
-        train_batch(model, optimizer, baseline, epoch, batch_id, step, batch, opts)
+        train_batch(
+            model, optimizer, baseline, epoch, batch_id, step, data_batch, tb_logger, opts
+        )
 
         step += 1
 
@@ -135,24 +167,29 @@ def train_epoch(
 
     avg_reward = validate(model, val_dataset, opts)
 
+    if not opts.no_tensorboard:
+        tb_logger["logger"].log_value("val_avg_reward", avg_reward, step)
+
     baseline.epoch_callback(model, epoch)
 
     # lr_scheduler should be called at end of epoch
     lr_scheduler.step()
 
 
-def train_batch(model, optimizer, baseline, epoch, batch_id, step, batch, opts):
-    x, bl_val = baseline.unwrap_batch(batch)
+def train_batch(
+    model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts
+):
+    x, graph_batch, bl_val = baseline.unwrap_batch(batch)
     x = move_to(x, opts.device)
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 
     # Evaluate model, get costs and log probabilities
-    cost, log_likelihood = model(x)
+    cost, log_likelihood = model(x, graph_batch)
 
     # Evaluate baseline, get baseline loss if any (only for critic)
     bl_val, bl_loss = baseline.eval(x, cost) if bl_val is None else (bl_val, 0)
 
-    # Calculate loss
+    # Calculate loss TODO fix!
     reinforce_loss = ((cost - bl_val) * log_likelihood).mean()
     loss = reinforce_loss + bl_loss
 
@@ -166,6 +203,7 @@ def train_batch(model, optimizer, baseline, epoch, batch_id, step, batch, opts):
     # Logging
     if step % int(opts.log_step) == 0:
         log_values(
+            model,
             cost,
             grad_norms,
             epoch,
@@ -174,5 +212,6 @@ def train_batch(model, optimizer, baseline, epoch, batch_id, step, batch, opts):
             log_likelihood,
             reinforce_loss,
             bl_loss,
+            tb_logger,
             opts,
         )
