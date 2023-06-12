@@ -26,10 +26,19 @@ def validate(model, dataset, opts):
 
 
 def collate_fn(batch):
-    data_batch, graph_batch = zip(*batch)
+    batch_size = len(batch[0])
 
-    return default_collate(data_batch), list(graph_batch)
+    if batch_size == 2:
+        data_batch, graph_batch = zip(*batch)
 
+        return default_collate(data_batch), list(graph_batch)
+
+    if batch_size == 3:
+        data_batch = [item['data'] for item in batch]
+        graph_batch = [item['graphs'] for item in batch]
+        baseline = [item['baseline'] for item in batch]
+
+        return default_collate(data_batch), list(graph_batch), default_collate(baseline)
 
 def rollout(model, dataset, opts):
     # Put in greedy evaluation mode!
@@ -125,11 +134,11 @@ def train_epoch(
     model.train()
     set_decode_type(model, "sampling")
 
-    for batch_id, batch in enumerate(
+    for batch_id, data_batch in enumerate(
         tqdm(training_dataloader, disable=opts.no_progress_bar)
     ):
         train_batch(
-            model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts
+            model, optimizer, baseline, epoch, batch_id, step, data_batch, tb_logger, opts
         )
 
         step += 1
@@ -170,12 +179,12 @@ def train_epoch(
 def train_batch(
     model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts
 ):
-    x, graphs, bl_val = baseline.unwrap_batch(batch)
+    x, graph_batch, bl_val = baseline.unwrap_batch(batch)
     x = move_to(x, opts.device)
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 
     # Evaluate model, get costs and log probabilities
-    cost, log_likelihood = model(x, graphs)
+    cost, log_likelihood = model(x, graph_batch)
 
     # Evaluate baseline, get baseline loss if any (only for critic)
     bl_val, bl_loss = baseline.eval(x, cost) if bl_val is None else (bl_val, 0)

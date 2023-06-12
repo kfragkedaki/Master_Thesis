@@ -88,12 +88,12 @@ class TSPDataset(Dataset):
                     for row in (data[offset : offset + num_samples])
                 ]
         else:
-            sampler = Network(
+            self.sampler = Network(
                 num_graphs=num_samples,
                 num_nodes=size,
                 num_depots=1,
             )
-            self.data = sampler.get_graph_positions()
+            self.data = self.sampler.get_graph_positions()
 
         self.size = len(self.data)
 

@@ -92,16 +92,16 @@ class AttentionEVRPModel(nn.Module):
         :return:
         """
 
-        # if len(graphs) > 0:
-        self.graphs = EVRPNetwork(
-            num_graphs=graphs[0].num_nodes,
-            num_nodes=graphs[0].num_nodes,
-            num_trucks=graphs[0].num_trucks,
-            num_trailers=graphs[0].num_trailers,
-            truck_names=graphs[0].truck_names,
-            plot_attributes=True,
-            graphs=graphs,
-        )
+        if len(graphs) > 0:
+            self.graphs = EVRPNetwork(
+                num_graphs=graphs[0].num_nodes,
+                num_nodes=graphs[0].num_nodes,
+                num_trucks=graphs[0].num_trucks,
+                num_trailers=graphs[0].num_trailers,
+                truck_names=graphs[0].truck_names,
+                plot_attributes=True,
+                graphs=graphs,
+            )
 
         if (
             self.checkpoint_encoder and self.training

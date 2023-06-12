@@ -191,9 +191,9 @@ class RolloutBaseline(Baseline):
 
     def unwrap_batch(self, batch):
         return (
-            batch["data"][0],
-            batch["data"][1],
-            batch["baseline"].view(-1),
+            batch[0],
+            batch[1],
+            batch[2].view(-1),
         )  # Flatten result to undo wrapping as 2D
 
     def eval(self, x, c):
@@ -252,7 +252,7 @@ class BaselineDataset(Dataset):
         assert len(self.dataset) == len(self.baseline)
 
     def __getitem__(self, item):
-        return {"data": self.dataset[item], "baseline": self.baseline[item]}
+        return {"data": self.dataset[item][0], "graphs": self.dataset[item][1], "baseline": self.baseline[item]}
 
     def __len__(self):
         return len(self.dataset)
