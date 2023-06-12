@@ -181,11 +181,7 @@ def train_batch(
     bl_val, bl_loss = baseline.eval(x, cost) if bl_val is None else (bl_val, 0)
 
     # Calculate loss TODO fix!
-    print(cost.sum(1), cost.sum(1).shape)
-    print(bl_val, bl_val.shape)
-    print(cost.sum(1) - bl_val)
-    print(log_likelihood)
-    reinforce_loss = ((cost.sum(1) - bl_val) * log_likelihood).mean()
+    reinforce_loss = ((cost - bl_val) * log_likelihood).mean()
     loss = reinforce_loss + bl_loss
 
     # Perform backward pass and optimization step

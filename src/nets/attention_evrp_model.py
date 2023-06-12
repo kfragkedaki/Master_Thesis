@@ -92,16 +92,16 @@ class AttentionEVRPModel(nn.Module):
         :return:
         """
 
-        if len(graphs) > 0:
-            self.graphs = EVRPNetwork(
-                num_graphs=graphs[0].num_nodes,
-                num_nodes=graphs[0].num_nodes,
-                num_trucks=graphs[0].num_trucks,
-                num_trailers=graphs[0].num_trailers,
-                truck_names=graphs[0].truck_names,
-                plot_attributes=True,
-                graphs=graphs,
-            )
+        # if len(graphs) > 0:
+        self.graphs = EVRPNetwork(
+            num_graphs=graphs[0].num_nodes,
+            num_nodes=graphs[0].num_nodes,
+            num_trucks=graphs[0].num_trucks,
+            num_trailers=graphs[0].num_trailers,
+            truck_names=graphs[0].truck_names,
+            plot_attributes=True,
+            graphs=graphs,
+        )
 
         if (
             self.checkpoint_encoder and self.training
@@ -114,7 +114,6 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
         cost, pi, _log_trailers, _log_trucks, _log_nodes = self.step(input, embeddings)
-
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
@@ -124,7 +123,7 @@ class AttentionEVRPModel(nn.Module):
         if return_pi:
             return cost, (ll_trailer, ll_truck, ll_node), pi
 
-        return cost, (ll_trailer, ll_truck, ll_node)  # tensor(batch_size) both
+        return cost, ll_trailer + ll_truck + ll_node  # tensor(batch_size) both
 
     def step(self, input, embeddings):
         outputs_trailers = []  # [(log_trailer, log_truck, log_node)]
@@ -169,35 +168,34 @@ class AttentionEVRPModel(nn.Module):
         print("!!!!!!!!!!!DONE!!!!!!!!! ", i)
         # Collected lists, return Tensor
         return (
-            state.lengths,
-            state.visited_.transpose(0, 1),
-            torch.stack(outputs_trailers, 1),
-            torch.stack(outputs_trucks, 1),
-            torch.stack(outputs_nodes, 1),
+            state.lengths.sum(1),  # (batch_size,)
+            state.visited_.transpose(0, 1),  # (5, batch_size, time)
+            torch.stack(outputs_trailers, 1),  # (batch_size, time, trailer_size)
+            torch.stack(outputs_trucks, 1),  # (batch_size, time, truck_size)
+            torch.stack(outputs_nodes, 1),  # (batch_size, time, graph_size)
         )
-        # return torch.stack(outputs_trailers, 1), # (batch_size, i, graph size)
-        # torch.stack(outputs_trucks, 1),
-        # torch.stack(outputs_nodes, 1),
-        # torch.stack(sequences_trailers, 1), # (batch_size, graph size)
-        # torch.stack(sequences_trucks, 1),
-        # torch.stack(sequences_nodes, 1),
-        # state.visited_,
-        # state.lengths
 
     def _calc_log_likelihood(self, _log_trailers, _log_trucks, _log_nodes, pi):
-        trailer, truck, node, _, _ = pi
+        _, node, truck, trailer, _ = pi
 
         # # Get log_p corresponding to selected actions TODO fix!
-        # log_trailers = _log_trailers.gather(2, trailer.unsqueeze(-1)).squeeze(-1)
-        # log_trucks = _log_trucks.gather(2, truck.unsqueeze(-1)).squeeze(-1)
-        # log_nodes = _log_nodes.gather(2, node.unsqueeze(-1)).squeeze(-1)
-        #
-        # assert (
-        #     log_nodes > -1000
-        # ).data.all(), "Logprobs should not be -inf, check sampling procedure!"
+        mask_trailers = (trailer == -1)
+        index = torch.where(mask_trailers, torch.zeros_like(trailer), trailer)
+        gathered_log_trailers = _log_trailers.gather(2, index.unsqueeze(-1).to(torch.int64)).squeeze(-1)
+        log_trailers = torch.where(mask_trailers, torch.zeros_like(gathered_log_trailers), gathered_log_trailers)
+
+        mask_trucks = (truck == -1)
+        index_truck = torch.where(mask_trucks, torch.zeros_like(truck), truck)
+        gathered_log_trucks = _log_trucks.gather(2, index_truck.unsqueeze(-1).to(torch.int64)).squeeze(-1)
+        log_trucks = torch.where(mask_trucks, torch.zeros_like(gathered_log_trucks), gathered_log_trucks)
+
+        mask_nodes = (node == -1)
+        index_node = torch.where(mask_nodes, torch.zeros_like(node), node)
+        gathered_log_nodes = _log_nodes.gather(2, index_node.unsqueeze(-1).to(torch.int64)).squeeze(-1)
+        log_nodes = torch.where(mask_nodes, torch.zeros_like(gathered_log_nodes), gathered_log_nodes)
 
         # Calculate log_likelihood
-        return _log_trailers.sum(1), _log_trucks.sum(1), _log_nodes.sum(1)
+        return log_trailers.sum(1), log_trucks.sum(1), log_nodes.sum(1)  # (batch_size,)
 
     def _precompute(self, embeddings, num_steps=1):
         # The fixed context projection of the graph embedding is calculated only once for efficiency

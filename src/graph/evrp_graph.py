@@ -316,11 +316,11 @@ class EVRPGraph:
             trailer (src): Trailer id of the edge
             timestamp (src): Timestamp id of the edge
         """
-        for source_node, target_node, truck, trailer, timestamp in data:
+        for (source_node, target_node, truck, trailer, timestamp) in data:
             source_node = int(source_node)
             target_node = int(target_node)
-            if source_node == -1:
-                source_node = target_node
+
+            if source_node == -1 or target_node == -1: continue
 
             trucks = self.graph.nodes.data()[source_node]["trucks"]
             trailers = self.graph.nodes.data()[source_node]["trailers"]
@@ -333,12 +333,12 @@ class EVRPGraph:
                 assert not (
                     not bool(trailers)
                     or (bool(trailers) and trailer_id not in trailers.keys())
-                ), "Trailer when it is not in the source node, "
+                ), f"Trailer when it is not in the source node, {trailers}, {trailer_id}, {trailer}"
 
                 assert not (
                     bool(trailers)
                     and source_node == trailers[trailer_id]["destination_node"]
-                ), "Trailer in destination node"
+                ), f"Trailer in destination node, {source_node}, {trailers}, {trailer_id}"
 
             # check truck
             if truck == -1 or truck == None:
@@ -349,7 +349,7 @@ class EVRPGraph:
 
                 assert not (
                     not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
-                ), f"The truck is not in the source node, {truck_id}"
+                ), f"The truck is not in the source node, {truck_id}, {trucks}"
 
             self.graph.add_edges_from(
                 [
