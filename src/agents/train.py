@@ -34,11 +34,12 @@ def collate_fn(batch):
         return default_collate(data_batch), list(graph_batch)
 
     if batch_size == 3:
-        data_batch = [item['data'] for item in batch]
-        graph_batch = [item['graphs'] for item in batch]
-        baseline = [item['baseline'] for item in batch]
+        data_batch = [item["data"] for item in batch]
+        graph_batch = [item["graphs"] for item in batch]
+        baseline = [item["baseline"] for item in batch]
 
         return default_collate(data_batch), list(graph_batch), default_collate(baseline)
+
 
 def rollout(model, dataset, opts):
     # Put in greedy evaluation mode!
@@ -138,7 +139,15 @@ def train_epoch(
         tqdm(training_dataloader, disable=opts.no_progress_bar)
     ):
         train_batch(
-            model, optimizer, baseline, epoch, batch_id, step, data_batch, tb_logger, opts
+            model,
+            optimizer,
+            baseline,
+            epoch,
+            batch_id,
+            step,
+            data_batch,
+            tb_logger,
+            opts,
         )
 
         step += 1

@@ -253,7 +253,11 @@ class BaselineDataset(Dataset):
         assert len(self.dataset) == len(self.baseline)
 
     def __getitem__(self, item):
-        return {"data": self.dataset[item][0], "graphs": self.dataset[item][1], "baseline": self.baseline[item]}
+        return {
+            "data": self.dataset[item][0],
+            "graphs": self.dataset[item][1],
+            "baseline": self.baseline[item],
+        }
 
     def __len__(self):
         return len(self.dataset)

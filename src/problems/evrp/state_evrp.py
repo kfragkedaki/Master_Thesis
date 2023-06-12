@@ -253,7 +253,9 @@ class StateEVRP(NamedTuple):
         _, graph_size, _ = self.num_chargers.shape
         _, num_trailers, _ = self.trailers_locations.shape
 
-        if self.i > 1:  # TODO Terminate when running for long (check condition)
+        if (
+            self.i > num_trailers**graph_size
+        ):  # TODO Terminate when running for long (check condition)
             print("TOO MANY RUNS")
             return True
         return torch.all(torch.eq(self.trailers_locations, self.trailers_destinations))
