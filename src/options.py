@@ -199,7 +199,7 @@ def get_options(args=None):
     parser.add_argument(
         "--display_graphs",
         type=int,
-        default=None,
+        default=3,
         help="The number of displayed graphs during evaluation. Default None.",
     )
 
