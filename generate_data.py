@@ -140,7 +140,6 @@ if __name__ == "__main__":
 
     for problem, distributions in problems.items():
         for graph_size in opts.graph_sizes:
-
             datadir = os.path.join(opts.data_dir, problem)
             os.makedirs(datadir, exist_ok=True)
 

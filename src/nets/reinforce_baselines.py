@@ -56,7 +56,6 @@ class WarmupBaseline(Baseline):
         return self.warmup_baseline.unwrap_batch(batch)
 
     def eval(self, x, c):
-
         if self.alpha == 1:
             return self.baseline.eval(x, c)
         if self.alpha == 0:
@@ -97,7 +96,6 @@ class ExponentialBaseline(Baseline):
         self.v = None
 
     def eval(self, x, c):
-
         if self.v is None:
             v = c.mean()
         else:
@@ -192,8 +190,10 @@ class RolloutBaseline(Baseline):
         )
 
     def unwrap_batch(self, batch):
-        return batch["data"][0], batch["data"][1], batch["baseline"].view(
-            -1
+        return (
+            batch["data"][0],
+            batch["data"][1],
+            batch["baseline"].view(-1),
         )  # Flatten result to undo wrapping as 2D
 
     def eval(self, x, c):

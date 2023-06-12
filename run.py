@@ -9,7 +9,6 @@ from src.agents import Agent
 
 
 def run(opts: dict()):
-
     # Pretty print the run args
     pp.pprint(vars(opts))
 

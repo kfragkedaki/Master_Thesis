@@ -50,7 +50,6 @@ class StateCVRP(NamedTuple):
 
     @staticmethod
     def initialize(input, visited_dtype=torch.uint8):
-
         depot = input["depot"]
         loc = input["loc"]
         demand = input["demand"]
@@ -86,7 +85,6 @@ class StateCVRP(NamedTuple):
         )
 
     def get_final_cost(self):
-
         assert self.all_finished()
 
         return self.lengths + (self.coords[self.ids, 0, :] - self.cur_coord).norm(
@@ -94,7 +92,6 @@ class StateCVRP(NamedTuple):
         )
 
     def update(self, selected):
-
         assert self.i.size(0) == 1, "Can only update if state represents single step"
 
         # Update the state

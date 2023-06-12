@@ -155,7 +155,6 @@ def eval_dataset(dataset_path, width, softmax_temp, opts):
 
 
 def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
-
     model.to(device)
     model.eval()
 
@@ -232,7 +231,6 @@ def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "datasets", nargs="+", help="Filename of the dataset(s) to evaluate"

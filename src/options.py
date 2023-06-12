@@ -7,7 +7,6 @@ import torch
 
 
 def get_options(args=None):
-
     # Initialize Config
     parser = argparse.ArgumentParser(
         description="Attention based model for solving the Travelling Salesman Problem with Reinforcement Learning"
@@ -20,24 +19,24 @@ def get_options(args=None):
         help="The problem to solve tsp, cvrp or evrp, default 'tsp'",
     )
     parser.add_argument(
-        "--graph_size", type=int, default=10, help="The size of the problem graph"
+        "--graph_size", type=int, default=4, help="The size of the problem graph"
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=512,
+        default=3,
         help="Number of instances per batch during training",
     )
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=512 * 25,
+        default=3,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=1024 * 2,
+        default=3,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(
@@ -215,7 +214,7 @@ def get_options(args=None):
 
     # Configure outputs dir
     os.makedirs(opts.save_dir)
-    if opts.display_graphs is not None: 
+    if opts.display_graphs is not None:
         os.makedirs(opts.save_dir + "/graphs")
 
     with open(opts.save_dir + "/results", "w+", newline="") as file:

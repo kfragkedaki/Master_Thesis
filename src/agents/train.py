@@ -45,7 +45,9 @@ def rollout(model, dataset, opts):
         [
             eval_model_bat(data_batch, graph_batch)
             for (data_batch, graph_batch) in tqdm(
-                DataLoader(dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn),
+                DataLoader(
+                    dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
+                ),
                 disable=opts.no_progress_bar,
             )
         ],
@@ -113,7 +115,10 @@ def train_epoch(
         )
     )
     training_dataloader = DataLoader(
-        training_dataset, batch_size=opts.batch_size, num_workers=1, collate_fn=collate_fn
+        training_dataset,
+        batch_size=opts.batch_size,
+        num_workers=1,
+        collate_fn=collate_fn,
     )
 
     # Put model in train mode!
@@ -123,7 +128,6 @@ def train_epoch(
     for batch_id, batch in enumerate(
         tqdm(training_dataloader, disable=opts.no_progress_bar)
     ):
-
         train_batch(
             model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts
         )

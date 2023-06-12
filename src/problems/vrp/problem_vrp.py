@@ -8,7 +8,6 @@ from src.utils.beam_search import beam_search
 
 
 class CVRP(object):
-
     NAME = "cvrp"  # Capacitated Vehicle Routing Problem
 
     VEHICLE_CAPACITY = 1.0  # (w.l.o.g. vehicle capacity is 1, demands should be scaled)
@@ -80,7 +79,6 @@ class CVRP(object):
         model=None,
         max_calc_batch_size=4096,
     ):
-
         assert model is not None, "Provide model"
 
         fixed = model.precompute_fixed(input)
@@ -136,9 +134,8 @@ class VRPDataset(Dataset):
             ]
 
         else:
-
             # From VRP with RL paper https://arxiv.org/abs/1802.04240
-            CAPACITIES = {4: 10., 10: 20.0, 20: 30.0, 50: 40.0, 100: 50.0}
+            CAPACITIES = {4: 10.0, 10: 20.0, 20: 30.0, 50: 40.0, 100: 50.0}
 
             self.data = [
                 {

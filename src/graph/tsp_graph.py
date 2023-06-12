@@ -3,7 +3,6 @@ import numpy as np
 
 
 class Graph:
-
     graph: nx.Graph = nx.Graph()
 
     def __init__(self, num_nodes: int, num_depots: int, plot_demand: bool = False):

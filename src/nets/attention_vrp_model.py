@@ -110,7 +110,6 @@ class AttentionVRPModel(nn.Module):
         return cost, acc_log_prob  # tensor(batch_size) both
 
     def node_select(self, input, embeddings):
-
         outputs = []
         sequences = []
 
@@ -121,7 +120,6 @@ class AttentionVRPModel(nn.Module):
         # Perform decoding steps
         i = 0
         while not state.all_finished():
-
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
@@ -139,7 +137,6 @@ class AttentionVRPModel(nn.Module):
         )  # (batch_size, i, graph size) and (batch_size, graph size)
 
     def _calc_log_likelihood(self, _log_p, a, mask):
-
         # Get log_p corresponding to selected actions
         log_p = _log_p.gather(2, a.unsqueeze(-1)).squeeze(-1)
 
@@ -155,7 +152,6 @@ class AttentionVRPModel(nn.Module):
         return log_p.sum(1)
 
     def _precompute(self, embeddings, num_steps=1):
-
         # The fixed context projection of the graph embedding is calculated only once for efficiency
         graph_embed = embeddings.mean(1)
         # fixed context = (batch_size, 1, embed_dim) to make broadcastable with parallel timesteps

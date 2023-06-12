@@ -184,7 +184,6 @@ class EVRPGraph:
 
         # draw attributes
         if self.plot_attributes:
-
             colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
             color = {f"Trailer {i}": colors[i] for i in range(self.num_trailers)}
             color[None] = "black"
@@ -325,18 +324,20 @@ class EVRPGraph:
 
             trucks = self.graph.nodes.data()[source_node]["trucks"]
             trailers = self.graph.nodes.data()[source_node]["trailers"]
-            
+
             # check trailer
             if trailer == -1 or trailer == None:
                 trailer_id = None
             else:
                 trailer_id = f"Trailer {int(trailer)}"
-                assert not (not bool(trailers) or (
-                        bool(trailers) and trailer_id not in trailers.keys()
-                )), "Trailer when it is not in the source node, "
+                assert not (
+                    not bool(trailers)
+                    or (bool(trailers) and trailer_id not in trailers.keys())
+                ), "Trailer when it is not in the source node, "
 
-                assert not(
-                        bool(trailers) and source_node == trailers[trailer_id]["destination_node"]
+                assert not (
+                    bool(trailers)
+                    and source_node == trailers[trailer_id]["destination_node"]
                 ), "Trailer in destination node"
 
             # check truck
@@ -346,15 +347,20 @@ class EVRPGraph:
                 truck_names = get_truck_names(file=self.truck_names)
                 truck_id = f"Truck {truck_names[int(truck)]}"
 
-                assert not (not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())), \
-                    f"The truck is not in the source node, {truck_id}"
+                assert not (
+                    not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
+                ), f"The truck is not in the source node, {truck_id}"
 
             self.graph.add_edges_from(
                 [
                     (
                         source_node,
                         target_node,
-                        {"truck": truck_id, "trailer": trailer_id, "timestamp": int(timestamp)},
+                        {
+                            "truck": truck_id,
+                            "trailer": trailer_id,
+                            "timestamp": int(timestamp),
+                        },
                     )
                 ]
             )

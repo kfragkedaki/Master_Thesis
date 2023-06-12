@@ -76,7 +76,7 @@ class AttentionEVRPModel(nn.Module):
             mask_logits=mask_logits,
             num_trailers=opts.num_trailers,
             num_trucks=opts.num_trucks,
-            features=self.features
+            features=self.features,
         )
 
     def set_decode_type(self, decode_type, temp=None):
@@ -100,7 +100,8 @@ class AttentionEVRPModel(nn.Module):
                 num_trailers=graphs[0].num_trailers,
                 truck_names=graphs[0].truck_names,
                 plot_attributes=True,
-                graphs=graphs)
+                graphs=graphs,
+            )
 
         if (
             self.checkpoint_encoder and self.training
@@ -117,17 +118,21 @@ class AttentionEVRPModel(nn.Module):
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
-        ll_trailer, ll_truck, ll_node = self._calc_log_likelihood(_log_trailers, _log_trucks, _log_nodes, pi)
+        ll_trailer, ll_truck, ll_node = self._calc_log_likelihood(
+            _log_trailers, _log_trucks, _log_nodes, pi
+        )
         if return_pi:
-            return cost,  (ll_trailer, ll_truck, ll_node), pi
+            return cost, (ll_trailer, ll_truck, ll_node), pi
 
-        return cost,  (ll_trailer, ll_truck, ll_node)  # tensor(batch_size) both
+        return cost, (ll_trailer, ll_truck, ll_node)  # tensor(batch_size) both
 
     def step(self, input, embeddings):
         outputs_trailers = []  # [(log_trailer, log_truck, log_node)]
         outputs_trucks = []
         outputs_nodes = []
-        sequences_trailers = []  # [(from_node, to_node, truck_id, trailer_id, timestep=i)]
+        sequences_trailers = (
+            []
+        )  # [(from_node, to_node, truck_id, trailer_id, timestep=i)]
         sequences_trucks = []
         sequences_nodes = []
         state = self.problem.make_state(input)
@@ -144,7 +149,11 @@ class AttentionEVRPModel(nn.Module):
             previous_state = state
             state = state.update(trailer, truck, node)
 
-            self.get_graphs(state=state, previous_state=previous_state, selected=(trailer, truck, node, i))
+            self.get_graphs(
+                state=state,
+                previous_state=previous_state,
+                selected=(trailer, truck, node, i),
+            )
 
             # Collect output of step
             outputs_trailers.append(log_trailer)
@@ -159,10 +168,13 @@ class AttentionEVRPModel(nn.Module):
 
         print("!!!!!!!!!!!DONE!!!!!!!!! ", i)
         # Collected lists, return Tensor
-        return state.lengths, state.visited_.transpose(0, 1),\
-            torch.stack(outputs_trailers, 1),\
-            torch.stack(outputs_trucks, 1),\
+        return (
+            state.lengths,
+            state.visited_.transpose(0, 1),
+            torch.stack(outputs_trailers, 1),
+            torch.stack(outputs_trucks, 1),
             torch.stack(outputs_nodes, 1),
+        )
         # return torch.stack(outputs_trailers, 1), # (batch_size, i, graph size)
         # torch.stack(outputs_trucks, 1),
         # torch.stack(outputs_nodes, 1),
@@ -188,10 +200,11 @@ class AttentionEVRPModel(nn.Module):
         return _log_trailers.sum(1), _log_trucks.sum(1), _log_nodes.sum(1)
 
     def _precompute(self, embeddings, num_steps=1):
-
         # The fixed context projection of the graph embedding is calculated only once for efficiency
         graph_embed = embeddings.mean(1)
-        fixed_context = self.project_fixed_context(graph_embed)[:, None, :]  # (batch_size, 1, embed_dim)
+        fixed_context = self.project_fixed_context(graph_embed)[
+            :, None, :
+        ]  # (batch_size, 1, embed_dim)
 
         # The projection of the node embeddings for the attention is calculated once up front
         (
@@ -262,21 +275,34 @@ class AttentionEVRPModel(nn.Module):
         return CachedLookup(self._precompute(embeddings))
 
     def get_graphs(self, state=None, previous_state=None, selected=None):
-          file = self.opts.save_dir + "/graphs"
-          if self.opts.display_graphs is not None:
-            if state is not None and selected is not None and previous_state is not None:
+        file = self.opts.save_dir + "/graphs"
+        if self.opts.display_graphs is not None:
+            if (
+                state is not None
+                and selected is not None
+                and previous_state is not None
+            ):
                 self.graphs.visit_edges(tensor_to_tuples(state.visited_))
                 self.graphs.update_attributes(state, previous_state)
-                self.graphs.draw(graph_idxs=range(self.opts.display_graphs), selected=selected, with_labels=True, file=file)
+                self.graphs.draw(
+                    graph_idxs=range(self.opts.display_graphs),
+                    selected=selected,
+                    with_labels=True,
+                    file=file,
+                )
             else:
-                self.graphs.draw(graph_idxs=range(self.opts.display_graphs), with_labels=True, file=file)
+                self.graphs.draw(
+                    graph_idxs=range(self.opts.display_graphs),
+                    with_labels=True,
+                    file=file,
+                )
 
 
 def tensor_to_tuples(tensor):
     batch_size, features, time = tensor.shape
     edges = []
     for b in range(batch_size):
-        batch_list = tuple(tensor[b, :, time-1].tolist())
+        batch_list = tuple(tensor[b, :, time - 1].tolist())
         edges.append([batch_list])
 
     return edges

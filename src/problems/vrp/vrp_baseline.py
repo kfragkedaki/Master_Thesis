@@ -14,7 +14,6 @@ from src.utils import run_all_in_pool
 def get_lkh_executable(
     url="http://www.akira.ruc.dk/~keld/research/LKH-3/LKH-3.0.4.tgz",
 ):
-
     cwd = os.path.abspath(os.path.join("problems", "vrp", "lkh"))
     os.makedirs(cwd, exist_ok=True)
 
@@ -67,7 +66,6 @@ def solve_lkh_log(
     runs=1,
     disable_cache=False,
 ):
-
     problem_filename = os.path.join(directory, "{}.lkh{}.vrp".format(name, runs))
     tour_filename = os.path.join(directory, "{}.lkh{}.tour".format(name, runs))
     output_filename = os.path.join(directory, "{}.lkh{}.pkl".format(name, runs))
@@ -161,7 +159,6 @@ def read_vrplib(filename, n):
 
 
 def write_vrplib(filename, depot, loc, demand, capacity, grid_size, name="problem"):
-
     with open(filename, "w") as f:
         f.write(
             "\n".join(
@@ -205,7 +202,6 @@ def write_vrplib(filename, depot, loc, demand, capacity, grid_size, name="proble
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("method", help="Name of the method to evaluate, 'lkh' only")
     parser.add_argument(
@@ -233,7 +229,6 @@ if __name__ == "__main__":
     ), "Cannot specify result filename with more than one dataset"
 
     for dataset_path in opts.datasets:
-
         assert os.path.isfile(check_extension(dataset_path)), "File does not exist!"
 
         dataset_basename, ext = os.path.splitext(os.path.split(dataset_path)[-1])

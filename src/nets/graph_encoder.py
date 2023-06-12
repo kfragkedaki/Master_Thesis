@@ -47,7 +47,6 @@ class MultiHeadAttention(nn.Module):
         self.init_parameters()
 
     def init_parameters(self):
-
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
@@ -132,13 +131,11 @@ class Normalization(nn.Module):
         # self.init_parameters()
 
     def init_parameters(self):
-
         for name, param in self.named_parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
     def forward(self, input):
-
         if isinstance(self.normalizer, nn.BatchNorm1d):
             return self.normalizer(input.view(-1, input.size(-1))).view(
                 *input.size()
@@ -197,7 +194,6 @@ class GraphAttentionEncoder(nn.Module):
         )
 
     def forward(self, x):
-
         # Batch multiply to get initial embeddings of nodes
         out = self.layers(x)
 

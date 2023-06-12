@@ -116,7 +116,6 @@ class AttentionTSPModel(nn.Module):
         return cost, acc_log_prob  # tensor(batch_size) both
 
     def node_select(self, input, embeddings):
-
         outputs = []
         sequences = []
 
@@ -127,7 +126,6 @@ class AttentionTSPModel(nn.Module):
         # Perform decoding steps
         i = 0
         while not state.all_finished():
-
             selected, log_p = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
@@ -145,7 +143,6 @@ class AttentionTSPModel(nn.Module):
         )  # (batch_size, i, graph size) and (batch_size, graph size)
 
     def _calc_log_likelihood(self, _log_p, a, mask):
-
         # Get log_p corresponding to selected actions
         log_p = _log_p.gather(2, a.unsqueeze(-1)).squeeze(-1)
 
@@ -181,7 +178,6 @@ class AttentionTSPModel(nn.Module):
     #     )
 
     def _precompute(self, embeddings, num_steps=1):
-
         # The fixed context projection of the graph embedding is calculated only once for efficiency
         graph_embed = embeddings.mean(1)
         # fixed context = (batch_size, 1, embed_dim) to make broadcastable with parallel timesteps
