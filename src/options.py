@@ -24,19 +24,19 @@ def get_options(args=None):
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=3,
+        default=512,
         help="Number of instances per batch during training",
     )
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=3,
+        default=512 * 25,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=3,
+        default=1024 * 2,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(

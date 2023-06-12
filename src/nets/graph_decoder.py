@@ -563,14 +563,15 @@ class GraphDecoderEVRP(GraphDecoder):
         masking = torch.all(mask, dim=1).squeeze(-1)
         if self.decode_type == "greedy":
             _, trailer = probs.max(1)  # index of the trailer so (batch_size,)
+
             trailer[
                 masking
             ] = (
                 -1
             )  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
-
+            
             assert (
-                not mask.squeeze(-1).gather(1, trailer.unsqueeze(-1)).data.any()
+                not mask[~masking].squeeze(-1).gather(1, trailer[~masking].unsqueeze(-1)).data.any()
             ), f"Decode greedy: infeasible action has maximum probability for trailer {out}"
 
         elif self.decode_type == "sampling":
@@ -644,13 +645,15 @@ class GraphDecoderEVRP(GraphDecoder):
         masking = torch.all(mask, dim=1).squeeze(-1)
         if self.decode_type == "greedy":
             _, truck = probs.max(1)  # index of the truck so (batch_size,)
+
             truck[
                 masking
             ] = (
                 -1
             )  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
+            
             assert (
-                not mask.squeeze(-1).gather(1, truck.unsqueeze(-1)).data.any()
+                not mask[~masking].squeeze(-1).gather(1, truck[~masking].unsqueeze(-1)).data.any()
             ), "Decode greedy: infeasible action has maximum probability for truck"
 
         elif self.decode_type == "sampling":
