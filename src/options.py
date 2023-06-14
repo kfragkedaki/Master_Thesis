@@ -214,8 +214,6 @@ def get_options(args=None):
 
     # Configure outputs dir
     os.makedirs(opts.save_dir)
-    if opts.display_graphs is not None:
-        os.makedirs(opts.save_dir + "/graphs")
 
     with open(opts.save_dir + "/results", "w+", newline="") as file:
         writer = csv.writer(file)

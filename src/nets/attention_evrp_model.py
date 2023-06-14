@@ -8,6 +8,7 @@ from .graph_decoder import GraphDecoderEVRP
 from src.graph.evrp_network import EVRPNetwork
 from src.utils.beam_search import CachedLookup
 
+import os
 
 class AttentionModelFixed(NamedTuple):
     """
@@ -84,13 +85,15 @@ class AttentionEVRPModel(nn.Module):
         if temp is not None:  # Do not change temperature if not provided
             self.temp = temp
 
-    def forward(self, input: dict = {}, graphs: tuple = (), return_pi=False):
+    def forward(self, input: dict = {}, graphs: tuple = (), epoch=0, type="initial", return_pi=False):
         """
         :param input: (batch_size, graph_size, node_dim) input node features or dictionary with multiple tensors
         :param return_pi: whether to return the output sequences, this is optional as it is not compatible with
         using DataParallel as the results may be of different lengths on different GPUs
         :return:
         """
+        self.epoch = epoch
+        self.type = type
 
         if len(graphs) > 0:
             self.graphs = EVRPNetwork(
@@ -102,6 +105,8 @@ class AttentionEVRPModel(nn.Module):
                 plot_attributes=True,
                 graphs=graphs,
             )
+        else:
+            self.graphs = None
 
         if (
             self.checkpoint_encoder and self.training
@@ -121,7 +126,7 @@ class AttentionEVRPModel(nn.Module):
             _log_trailers, _log_trucks, _log_nodes, pi
         )
         if return_pi:
-            return cost, (ll_trailer, ll_truck, ll_node), pi
+            return cost, (ll_trailer + ll_truck + ll_node), pi
 
         return cost, ll_trailer + ll_truck + ll_node  # tensor(batch_size) both
 
@@ -166,6 +171,9 @@ class AttentionEVRPModel(nn.Module):
             i += 1
 
         print("!!!!!!!!!!!DONE!!!!!!!!! ", i)
+        # cost = torch.where(
+        #     state.force_stop == 1, torch.tensor(100000), state.lengths.sum(1)
+        # ) # TODO test other options *1.5?
         # Collected lists, return Tensor
         return (
             state.lengths.sum(1),  # (batch_size,)
@@ -178,7 +186,7 @@ class AttentionEVRPModel(nn.Module):
     def _calc_log_likelihood(self, _log_trailers, _log_trucks, _log_nodes, pi):
         _, node, truck, trailer, _ = pi
 
-        # # Get log_p corresponding to selected actions TODO fix!
+        # Get log_p corresponding to selected actions
         mask_trailers = trailer == -1
         index = torch.where(mask_trailers, torch.zeros_like(trailer), trailer)
         gathered_log_trailers = _log_trailers.gather(
@@ -190,6 +198,10 @@ class AttentionEVRPModel(nn.Module):
             gathered_log_trailers,
         )
 
+        assert (
+                log_trailers > -1000
+        ).data.all(), "Logprobs of trailers should not be -inf, check sampling procedure!"
+
         mask_trucks = truck == -1
         index_truck = torch.where(mask_trucks, torch.zeros_like(truck), truck)
         gathered_log_trucks = _log_trucks.gather(
@@ -199,6 +211,10 @@ class AttentionEVRPModel(nn.Module):
             mask_trucks, torch.zeros_like(gathered_log_trucks), gathered_log_trucks
         )
 
+        assert (
+                log_trucks > -1000
+        ).data.all(), "Logprobs of trucks should not be -inf, check sampling procedure!"
+
         mask_nodes = node == -1
         index_node = torch.where(mask_nodes, torch.zeros_like(node), node)
         gathered_log_nodes = _log_nodes.gather(
@@ -207,6 +223,10 @@ class AttentionEVRPModel(nn.Module):
         log_nodes = torch.where(
             mask_nodes, torch.zeros_like(gathered_log_nodes), gathered_log_nodes
         )
+
+        assert (
+                log_nodes > -1000
+        ).data.all(), "Logprobs should not be -inf, check sampling procedure!"
 
         # Calculate log_likelihood
         return log_trailers.sum(1), log_trucks.sum(1), log_nodes.sum(1)  # (batch_size,)
@@ -287,13 +307,18 @@ class AttentionEVRPModel(nn.Module):
         return CachedLookup(self._precompute(embeddings))
 
     def get_graphs(self, state=None, previous_state=None, selected=None):
-        file = self.opts.save_dir + "/graphs"
-        if self.opts.display_graphs is not None:
+        file = self.opts.save_dir + "/graphs/" + self.type + '/' + str(self.epoch)
+
+        if self.opts.display_graphs is not None and self.graphs is not None:
+            if not os.path.exists(file):
+                os.makedirs(file)
+
             if (
                 state is not None
                 and selected is not None
                 and previous_state is not None
             ):
+                self.graphs.remove_edges()
                 self.graphs.visit_edges(tensor_to_tuples(state.visited_))
                 self.graphs.update_attributes(state, previous_state)
                 self.graphs.draw(

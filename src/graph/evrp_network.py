@@ -207,8 +207,6 @@ class EVRPNetwork:
                 else:
                     graph._nodes[location]["trailers"] = {trailer_name: data}
 
-            # print(graph._nodes)
-
     def get_graph_positions(self) -> torch.Tensor:
         """
         Returns the coordinates of each node in every graph as
@@ -310,20 +308,14 @@ class EVRPNetwork:
 
         return state
 
+    def remove_edges(self):
+        for i, graph in enumerate(self.graphs):
+            graph.remove_edges()
+
 
 if __name__ == "__main__":
+    fig, ax = plt.subplots()
     G = EVRPNetwork(num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2)
 
-    # add edges that where visited
-    edges = [
-        [
-            (0, 3, 1, 1, 1),
-            (0, 3, 0, None, 2),
-            (3, 2, 1, 0, 3),
-            (3, 2, 0, 2, 4),
-        ],
-    ]
-
-    G.visit_edges(edges)
-
     G.draw(graph_idxs=range(3), with_labels=True)
+    plt.show(bbox_inches="tight")
