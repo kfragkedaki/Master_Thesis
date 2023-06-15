@@ -93,7 +93,7 @@ class EVRPNetwork:
         )
 
     def draw(
-        self, graph_idxs: np.ndarray, selected=[], with_labels: bool = False, file="./", name=None
+        self, graph_idxs: np.ndarray, selected=[], with_labels: bool = False, file=None, name=None
     ) -> any:
         """
         Draw multiple graphs in a matplotlib grid.
@@ -135,7 +135,10 @@ class EVRPNetwork:
 
         # plt.show(bbox_inches="tight")
         time = selected[-1] if len(selected) > 0 else 0
-        plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
+        if file is None:
+            plt.show()
+        else:
+            plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
 
         # convert to plot to rgb-array
         fig.canvas.draw()
@@ -157,57 +160,6 @@ class EVRPNetwork:
             edges.append(self.graphs[i].visit_edge(row))
 
         return edges
-
-    # def update_attributes(self, state, previous_state) -> None:
-    #     _, num_trucks, _ = state.trucks_locations.shape
-    #     _, num_trailers, _ = state.trailers_locations.shape
-    #     _, num_nodes, _ = state.avail_chargers.shape
-
-    #     trucks_names = get_truck_names()
-    #     for i, graph in enumerate(self.graphs):
-    #         for node_index in range(num_nodes):
-    #             chargers = state.avail_chargers[i, node_index, 0]
-    #             graph._nodes[node_index]["available_chargers"] = int(chargers)
-
-    #         for truck_index in range(num_trucks):
-    #             location_prev = int(previous_state.trucks_locations[i, truck_index, 0])
-    #             graph._nodes[location_prev]["trucks"] = None
-
-    #         for truck_index in range(num_trucks):
-    #             location = int(state.trucks_locations[i, truck_index, 0])
-    #             battery_level = state.trucks_battery_levels[i, truck_index, 0]
-
-    #             truck_name = f"Truck {trucks_names[truck_index]}"  # Replace with actual truck name mapping
-    #             data = {"battery_level": int(battery_level)}
-    #             if graph._nodes[location]["trucks"] != None:
-    #                 graph._nodes[location]["trucks"][truck_name] = data
-    #             else:
-    #                 graph._nodes[location]["trucks"] = {truck_name: data}
-
-    #         for trailer_index in range(num_trailers):
-    #             location_prev = int(
-    #                 previous_state.trailers_locations[i, trailer_index, 0]
-    #             )
-    #             graph._nodes[location_prev]["trailers"] = None
-
-    #         for trailer_index in range(num_trailers):
-    #             trailer_name = f"Trailer {trailer_index}"
-    #             location = int(state.trailers_locations[i, trailer_index, 0])
-
-    #             data = {
-    #                 "destination_node": int(
-    #                     state.trailers_destinations[i, trailer_index, 0]
-    #                 ),
-    #                 "start_time": float(state.trailers_start_time[i, trailer_index, 0]),
-    #                 "end_time": float(state.trailers_end_time[i, trailer_index, 0]),
-    #                 "status": int(
-    #                     state.trailers_status[i, trailer_index, 0]
-    #                 ),  # 1: "Available", 0: "Pending"
-    #             }
-    #             if graph._nodes[location]["trailers"] != None:
-    #                 graph._nodes[location]["trailers"][trailer_name] = data
-    #             else:
-    #                 graph._nodes[location]["trailers"] = {trailer_name: data}
 
     def update_attributes(self, edge) -> None:
         for i, graph in enumerate(self.graphs):
@@ -239,8 +191,8 @@ class EVRPNetwork:
                 (num_graphs, num_nodes, 1)
         """
         chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
-        for i, graph in enumerate(self.graphs):
-            chargers[i] = graph._node_avail_chargers[:, None]
+        for graph_index, graph in enumerate(self.graphs):
+            chargers[graph_index] = graph._node_avail_chargers[:, None]
 
         return torch.FloatTensor(chargers)
 
@@ -314,9 +266,9 @@ class EVRPNetwork:
 
         return state
 
-    def remove_edges(self):
+    def clear(self):
         for i, graph in enumerate(self.graphs):
-            graph.remove_edges()
+            graph.clear()
 
 
 if __name__ == "__main__":

@@ -150,12 +150,10 @@ class AttentionEVRPModel(nn.Module):
             (trailer, truck, node), (log_trailer, log_truck, log_p) = self.decoder(
                 fixed, state, temp=self.temp, decode_type=self.decode_type
             )
-            previous_state = state
             state = state.update(trailer, truck, node)
 
             self.get_graphs(
                 state=state,
-                previous_state=previous_state,
                 selected=(trailer, truck, node, i),
             )
 
@@ -179,7 +177,7 @@ class AttentionEVRPModel(nn.Module):
         return (
             cost,  # (batch_size,)
             state.visited_.transpose(0,1),  # (5, batch_size, time)
-            state.decision,
+            state.decision,   # (batch_size, 3, time) 3 because (selected_trailer, selected_truck, selected_node)
             torch.stack(outputs_trailers, 1),  # (batch_size, time, trailer_size)
             torch.stack(outputs_trucks, 1),  # (batch_size, time, truck_size)
             torch.stack(outputs_nodes, 1),  # (batch_size, time, graph_size)
@@ -308,34 +306,26 @@ class AttentionEVRPModel(nn.Module):
         # the lookup once... this is the case if all elements in the batch have maximum batch size
         return CachedLookup(self._precompute(embeddings))
 
-    def get_graphs(self, state=None, previous_state=None, selected=None):
+    def get_graphs(self, state=None, selected=[]):
         file = self.opts.save_dir + "/graphs/" + self.type + '/' + str(self.epoch)
-
+        name = None
         if self.opts.display_graphs is not None and self.graphs is not None:
             if not os.path.exists(file):
                 os.makedirs(file)
 
-            if (
-                state is not None
-                and selected is not None
-                and previous_state is not None
-            ):
-                self.graphs.remove_edges()
+            if state is not None:
+                name = "initial"
+                self.graphs.clear()
                 edge = self.graphs.visit_edges(tensor_to_tuples(state.visited_))
                 self.graphs.update_attributes(edge)
-                self.graphs.draw(
-                    graph_idxs=range(self.opts.display_graphs),
-                    selected=selected,
-                    with_labels=True,
-                    file=file,
-                )
-            else:
-                self.graphs.draw(
-                    graph_idxs=range(self.opts.display_graphs),
-                    with_labels=True,
-                    file=file,
-                    name="initial",
-                )
+
+            self.graphs.draw(
+                graph_idxs=range(self.opts.display_graphs),
+                selected=selected,
+                with_labels=True,
+                file=file,
+                name=name
+            )
 
 
 def tensor_to_tuples(visited):

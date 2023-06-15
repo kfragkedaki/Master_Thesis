@@ -108,7 +108,7 @@ class StateEVRP(NamedTuple):
 
     def update(self, selected_trailer, selected_truck, selected_node):
         # TODO Check different scenarios
-        decision = torch.cat((selected_trailer.unsqueeze(-1), selected_truck.unsqueeze(-1), selected_node.unsqueeze(-1)), dim=1)
+        decision = torch.cat((selected_trailer.unsqueeze(-1), selected_truck.unsqueeze(-1), selected_node.unsqueeze(-1)), dim=1).unsqueeze(-1)
         # Calculate to_node
         from_node = self.trucks_locations[self.ids, selected_truck[self.ids]].squeeze(
             -1

@@ -12,6 +12,9 @@ FILE = "../problems/evrp/truck_names.csv"
 def get_truck_names(file: str = None) -> list:
     # change this function with the custom name. By default, we only 52 names for trucks.
 
+    if isinstance(file, list):
+        return file
+
     if file is None:
         names = list(string.ascii_letters.swapcase())
     else:
