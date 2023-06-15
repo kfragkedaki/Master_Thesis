@@ -6,6 +6,14 @@ from torch.nn import DataParallel
 import sys
 
 
+class Arguments:
+    def __init__(self, data):
+        self.__dict__.update(data)
+
+    def __getattr__(self, item):
+        return self.__dict__[item]
+
+
 def load_env(name: str):
     from src.problems import TSP, CVRP, EVRP
 
@@ -83,6 +91,8 @@ def load_args(filename):
         if probl == "op":
             args["problem"] = probl
             args["data_distribution"] = dist[0]
+
+    args["display_graphs"] = None
     return args
 
 
@@ -118,6 +128,7 @@ def load_model(path, epoch=None):
         normalization=args["normalization"],
         tanh_clipping=args["tanh_clipping"],
         checkpoint_encoder=args.get("checkpoint_encoder", False),
+        opts=Arguments(args),
     )
     # Overwrite model parameters by parameters to load
     load_data = torch_load_cpu(model_filename)

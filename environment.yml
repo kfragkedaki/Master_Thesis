@@ -8,6 +8,7 @@ dependencies:
 - tqdm
 - scipy
 - matplotlib
+- plotly
 - numpy
 - black
 - flake8

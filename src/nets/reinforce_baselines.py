@@ -14,7 +14,7 @@ class Baseline(object):
     def unwrap_batch(self, batch):
         return batch[0], batch[1], None
 
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         raise NotImplementedError("Override this method")
 
     def get_learnable_parameters(self):
@@ -55,13 +55,13 @@ class WarmupBaseline(Baseline):
             return self.baseline.unwrap_batch(batch)
         return self.warmup_baseline.unwrap_batch(batch)
 
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         if self.alpha == 1:
-            return self.baseline.eval(x, c)
+            return self.baseline.eval(x, c, graph_batch)
         if self.alpha == 0:
-            return self.warmup_baseline.eval(x, c)
-        v, l = self.baseline.eval(x, c)
-        vw, lw = self.warmup_baseline.eval(x, c)
+            return self.warmup_baseline.eval(x, c, graph_batch)
+        v, l = self.baseline.eval(x, c, graph_batch)
+        vw, lw = self.warmup_baseline.eval(x, c, graph_batch)
         # Return convex combination of baseline and of loss
         return self.alpha * v + (1 - self.alpha) * vw, self.alpha * l + (
             1 - self.alpha * lw
@@ -84,7 +84,7 @@ class WarmupBaseline(Baseline):
 
 
 class NoBaseline(Baseline):
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         return 0, 0  # No baseline, no loss
 
 
@@ -95,7 +95,7 @@ class ExponentialBaseline(Baseline):
         self.beta = beta
         self.v = None
 
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         if self.v is None:
             v = c.mean()
         else:
@@ -117,7 +117,7 @@ class CriticBaseline(Baseline):
 
         self.critic = critic
 
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         v = self.critic(x)
         # Detach v since actor should not backprop through baseline, only for loss
         return v.detach(), F.mse_loss(v, c.detach())
@@ -177,7 +177,11 @@ class RolloutBaseline(Baseline):
         else:
             self.dataset = dataset
         print("Evaluating baseline model on evaluation dataset")
-        self.bl_vals = rollout(self.model, self.dataset, self.opts).cpu().numpy()
+        self.bl_vals = (
+            rollout(self.model, self.dataset, self.opts, epoch, type="baseline")
+            .cpu()
+            .numpy()
+        )
         self.mean = self.bl_vals.mean()
         self.epoch = epoch
 
@@ -186,7 +190,10 @@ class RolloutBaseline(Baseline):
         # Need to convert baseline to 2D to prevent converting to double, see
         # https://discuss.pytorch.org/t/dataloader-gives-double-instead-of-float/717/3
         return BaselineDataset(
-            dataset, rollout(self.model, dataset, self.opts).view(-1, 1)
+            dataset,
+            rollout(
+                self.model, dataset, self.opts, epoch=self.epoch, type="baseline"
+            ).view(-1, 1),
         )
 
     def unwrap_batch(self, batch):
@@ -196,10 +203,10 @@ class RolloutBaseline(Baseline):
             batch[2].view(-1),
         )  # Flatten result to undo wrapping as 2D
 
-    def eval(self, x, c):
+    def eval(self, x, c, graph_batch):
         # Use volatile mode for efficient inference (single batch so we do not use rollout function)
         with torch.no_grad():
-            v, _ = self.model(x)
+            v, _ = self.model(x, graphs=graph_batch, type="eval")
 
         # There is no loss
         return v, 0
@@ -212,7 +219,11 @@ class RolloutBaseline(Baseline):
         """
         print("Evaluating candidate model on evaluation dataset")
         self.opts.display_graphs = None  # TODO fix!
-        candidate_vals = rollout(model, self.dataset, self.opts).cpu().numpy()
+        candidate_vals = (
+            rollout(model, self.dataset, self.opts, epoch=epoch, type="evaluation")
+            .cpu()
+            .numpy()
+        )
 
         candidate_mean = candidate_vals.mean()
 

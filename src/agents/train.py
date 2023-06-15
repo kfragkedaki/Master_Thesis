@@ -14,7 +14,7 @@ from torch.utils.data._utils.collate import default_collate
 def validate(model, dataset, opts):
     # Validate
     print("Validating...")
-    cost = rollout(model, dataset, opts)
+    cost = rollout(model, dataset, opts, type="validate")
     avg_cost = cost.mean()
     print(
         "Validation overall avg_cost: {} +- {}".format(
@@ -41,24 +41,31 @@ def collate_fn(batch):
         return default_collate(data_batch), list(graph_batch), default_collate(baseline)
 
 
-def rollout(model, dataset, opts):
+def rollout(model, dataset, opts, epoch=0, type="baseline"):
     # Put in greedy evaluation mode!
     set_decode_type(model, "greedy")
     model.eval()
 
-    def eval_model_bat(batch_data, graph_batch):
+    def eval_model_bat(batch_data, graph_batch, batch_id):
         with torch.no_grad():
-            cost, _ = model(move_to(batch_data, opts.device), graphs=graph_batch)
+            cost, _ = model(
+                move_to(batch_data, opts.device),
+                graphs=graph_batch,
+                epoch=batch_id,
+                type=type,
+            )
         return cost.data.cpu()
 
     return torch.cat(
         [
-            eval_model_bat(data_batch, graph_batch)
-            for (data_batch, graph_batch) in tqdm(
-                DataLoader(
-                    dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
-                ),
-                disable=opts.no_progress_bar,
+            eval_model_bat(data_batch, graph_batch, batch_id)
+            for batch_id, (data_batch, graph_batch) in enumerate(
+                tqdm(
+                    DataLoader(
+                        dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
+                    ),
+                    disable=opts.no_progress_bar,
+                )
             )
         ],
         0,
@@ -193,12 +200,14 @@ def train_batch(
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 
     # Evaluate model, get costs and log probabilities
-    cost, log_likelihood = model(x, graph_batch)
+    cost, log_likelihood = model(input=x, graphs=graph_batch, epoch=step, type="train")
 
     # Evaluate baseline, get baseline loss if any (only for critic)
-    bl_val, bl_loss = baseline.eval(x, cost) if bl_val is None else (bl_val, 0)
+    bl_val, bl_loss = (
+        baseline.eval(x, cost, graph_batch) if bl_val is None else (bl_val, 0)
+    )
 
-    # Calculate loss TODO fix!
+    # Calculate loss
     reinforce_loss = ((cost - bl_val) * log_likelihood).mean()
     loss = reinforce_loss + bl_loss
 

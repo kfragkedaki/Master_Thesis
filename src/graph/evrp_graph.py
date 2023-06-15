@@ -4,6 +4,7 @@ from matplotlib.patches import FancyArrowPatch
 import numpy as np
 from src.utils.truck_naming import get_truck_names
 from matplotlib.lines import Line2D
+import copy
 
 
 class EVRPGraph:
@@ -16,6 +17,7 @@ class EVRPGraph:
         num_trucks: int,
         truck_names: str = None,
         plot_attributes: bool = True,
+        data: dict() = None,
         **kwargs,
     ):
         """
@@ -33,7 +35,18 @@ class EVRPGraph:
 
         # generate graph and set node position
         self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
-        self.set_default_attributes(**kwargs)
+        if data is not None:
+            result = get_information_from_dict(data)
+            self.num_nodes = result["num_nodes"]
+            self.num_trucks = result["num_trucks"]
+            self.num_trailers = result["num_trailers"]
+            self.truck_names = result["truck_names"]
+            nx.set_node_attributes(self.graph, "lightblue", "node_color")
+            nx.set_node_attributes(self.graph, data)
+        elif len(kwargs) > 0:
+            self.set_default_attributes(**kwargs)
+        else:
+            self.set_default_attributes()
 
     def set_default_attributes(
         self,
@@ -58,7 +71,7 @@ class EVRPGraph:
         # Node Attributes
         # If data is not provided, generate it
         if coords is None:
-            coords = dict(enumerate(np.random.rand(self.num_nodes, 2)))
+            coords = self._compute_coordinates()
         if num_chargers is None:
             num_chargers = dict(
                 enumerate(np.random.randint(low=1, high=5, size=self.num_nodes))
@@ -115,6 +128,26 @@ class EVRPGraph:
                 "battery_level": trucks_battery_levels
             }
 
+    def _compute_coordinates(self):
+        def check_distance(new_point, points, r_threshold):
+            for point in points.values():
+                dist = 0
+                if point is not None:
+                    dist = np.sqrt(np.sum(np.square(new_point - point)))
+                if dist > r_threshold:
+                    return False
+            return True
+
+        coordinates = dict.fromkeys(range(self.num_nodes))
+        idx = 0
+        while any(value is None for value in coordinates.values()):
+            new_point = np.random.rand(2)
+            if check_distance(new_point, coordinates, r_threshold=0.6):
+                coordinates[idx] = new_point
+                idx += 1
+
+        return coordinates
+
     def get_trailer_labels(self, data):
         node_trailers = {}
         for node_id, trailers_data in data.items():
@@ -169,12 +202,13 @@ class EVRPGraph:
         """
         Draws the graph as a matplotlib plot.
         """
+        graph_copy = copy.deepcopy(self.graph)
 
         # draw nodes according to color and position attribute
-        pos = nx.get_node_attributes(self.graph, "coordinates")
-        node_colors = nx.get_node_attributes(self.graph, "node_color").values()
+        pos = nx.get_node_attributes(graph_copy, "coordinates")
+        node_colors = nx.get_node_attributes(graph_copy, "node_color").values()
         nx.draw_networkx_nodes(
-            self.graph,
+            graph_copy,
             pos=pos,
             node_color=node_colors,
             ax=ax,
@@ -204,9 +238,9 @@ class EVRPGraph:
                 self.add_legend(color, style)
 
             # chargers
-            node_num_chargers = nx.get_node_attributes(self.graph, "num_chargers")
+            node_num_chargers = nx.get_node_attributes(graph_copy, "num_chargers")
             node_available_chargers = nx.get_node_attributes(
-                self.graph, "available_chargers"
+                graph_copy, "available_chargers"
             )
 
             node_num_chargers = {
@@ -216,13 +250,13 @@ class EVRPGraph:
                 )
             }
             nx.draw_networkx_labels(
-                self.graph, pos=pos, labels=node_num_chargers, ax=ax, font_size=6
+                graph_copy, pos=pos, labels=node_num_chargers, ax=ax, font_size=6
             )
             # trucks
             label_offset = np.array([0, 0.09])
             truck_label_pos = {k: (v - 0.6 * label_offset) for k, v in pos.items()}
 
-            node_trucks_data = nx.get_node_attributes(self.graph, "trucks")
+            node_trucks_data = nx.get_node_attributes(graph_copy, "trucks")
             node_trucks_labels = {
                 node_id: list(trucks_data.keys())
                 for (node_id, trucks_data) in node_trucks_data.items()
@@ -230,7 +264,7 @@ class EVRPGraph:
             }
 
             nx.draw_networkx_labels(
-                self.graph,
+                graph_copy,
                 pos=truck_label_pos,
                 labels=node_trucks_labels,
                 ax=ax,
@@ -241,11 +275,11 @@ class EVRPGraph:
             label_offset = np.array([0, 0.6])
             trailer_label_pos = {k: (v - 0.2 * label_offset) for k, v in pos.items()}
 
-            node_trailers_data = nx.get_node_attributes(self.graph, "trailers")
+            node_trailers_data = nx.get_node_attributes(graph_copy, "trailers")
             node_trailers_labels = self.get_trailer_labels(node_trailers_data)
 
             nx.draw_networkx_labels(
-                self.graph,
+                graph_copy,
                 pos=trailer_label_pos,
                 labels=node_trailers_labels,
                 ax=ax,
@@ -253,7 +287,7 @@ class EVRPGraph:
             )
 
             # draw edges
-            for edge in self.graph.edges(data=True, keys=True):
+            for edge in graph_copy.edges(data=True, keys=True):
                 _, _, key, data = edge
                 if "truck" in data and "trailer" in data and "timestamp" in data:
                     truck, trailer, timestamp = (
@@ -266,7 +300,7 @@ class EVRPGraph:
                     data["style"] = style[truck]
                     data["label"] = str(timestamp)
 
-            for u, v, key, data in self.graph.edges(data=True, keys=True):
+            for u, v, key, data in graph_copy.edges(data=True, keys=True):
                 if "truck" in data and "trailer" in data and "timestamp" in data:
                     pos_source = pos[u]
                     pos_target = pos[v]
@@ -305,7 +339,7 @@ class EVRPGraph:
                         bbox=dict(facecolor="white", edgecolor="none", alpha=0.5),
                     )
 
-    def visit_edge(self, data: list) -> None:
+    def visit_edge(self, data: list = []) -> tuple:
         """
         Add the visited edges.
 
@@ -320,7 +354,7 @@ class EVRPGraph:
             source_node = int(source_node)
             target_node = int(target_node)
 
-            if source_node == -1 or target_node == -1:
+            if source_node == -1 or target_node == -1 or truck == -1 or truck == None:
                 continue
 
             trucks = self.graph.nodes.data()[source_node]["trucks"]
@@ -342,16 +376,13 @@ class EVRPGraph:
                 ), f"Trailer in destination node, {source_node}, {trailers}, {trailer_id}"
 
             # check truck
-            if truck == -1 or truck == None:
-                truck_id = None
-            else:
-                truck_names = get_truck_names(file=self.truck_names)
-                truck_id = f"Truck {truck_names[int(truck)]}"
+            truck_names = get_truck_names(file=self.truck_names)
+            truck_id = f"Truck {truck_names[int(truck)]}"
+            assert not (
+                not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
+            ), f"The truck is not in the source node, {truck_id}, {trucks}"
 
-                assert not (
-                    not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
-                ), f"The truck is not in the source node, {truck_id}, {trucks}"
-
+            self.get_neighbors(source_node)
             self.graph.add_edges_from(
                 [
                     (
@@ -365,6 +396,40 @@ class EVRPGraph:
                     )
                 ]
             )
+
+            return (source_node, target_node, truck_id, trailer_id, int(timestamp))
+
+    def update_attributes(self, edge: list) -> None:
+        source_node, target_node, truck_id, trailer_id, timestep = edge
+        chargers = self._node_chargers
+
+        for node_index in range(self.num_nodes):  # reset
+            avail_chargers = int(chargers[node_index])
+            if node_index == target_node and truck_id is not None:
+                avail_chargers = avail_chargers - 1
+
+            self.graph.nodes[node_index]["available_chargers"] = avail_chargers
+
+        if target_node != -1 and source_node != -1 and truck_id is not None:
+            del self.graph.nodes[source_node]["trucks"][truck_id]
+            if not bool(self.graph.nodes[source_node]["trucks"]):
+                self.graph.nodes[source_node]["trucks"] = None
+            data = {"battery_level": 0}
+            if self.graph.nodes[target_node]["trucks"] is not None:
+                self.graph.nodes[target_node]["trucks"][truck_id] = data
+            else:
+                self.graph.nodes[target_node]["trucks"] = {truck_id: data}
+
+        if target_node != -1 and source_node != -1 and trailer_id is not None:
+            data = self.graph.nodes[source_node]["trailers"][trailer_id]
+            del self.graph.nodes[source_node]["trailers"][trailer_id]
+            if not bool(self.graph.nodes[source_node]["trailers"]):
+                self.graph.nodes[source_node]["trailers"] = None
+
+            if self.graph.nodes[target_node]["trailers"] is not None:
+                self.graph.nodes[target_node]["trailers"][trailer_id] = data
+            else:
+                self.graph.nodes[target_node]["trailers"] = {trailer_id: data}
 
     @property
     def _node_chargers(self) -> np.ndarray:
@@ -423,6 +488,11 @@ class EVRPGraph:
     def _graph(self):
         return self.graph
 
+    def clear(self):
+        edges = list(self.graph.edges())
+        self.graph.remove_edges_from(edges)
+        nx.set_node_attributes(self.graph, "lightblue", "node_color")
+
     def euclid_distance(self, node1_idx: int, node2_idx: int) -> float:
         """
         Calculates the euclid distance between two nodes
@@ -434,22 +504,98 @@ class EVRPGraph:
 
         return np.linalg.norm(node_one_pos - node_two_pos)
 
+    def get_neighbors(self, cur_node, r_threshold=0.6) -> np.ndarray:
+        nns = []
+        for node in self.graph.nodes():
+            if node != cur_node and self.euclid_distance(cur_node, node) <= r_threshold:
+                self.graph.nodes[node]["node_color"] = "lightgray"
+                nns.append(node)
 
-if __name__ == "__main__":
-    fig, ax = plt.subplots()
+        return nns
 
-    G = EVRPGraph(num_nodes=4, num_trailers=3, num_trucks=2, plot_attributes=True)
-    # add edges that where visited
-    edges = [
-        (0, 3, 1, 1, 1),
-        (0, 3, 0, None, 2),
-        (3, 2, 1, 0, 3),
-        (3, 2, 0, 2, 4),
+
+def get_information_from_dict(input: dict) -> dict:
+    data = {}
+    data["num_nodes"] = len(input)
+    data["num_trucks"] = sum(
+        len(graph.get("trucks", {})) if graph.get("trucks") is not None else 0
+        for graph in input.values()
+    )
+    data["num_trailers"] = sum(
+        len(graph.get("trailers", {})) if graph.get("trailers") is not None else 0
+        for graph in input.values()
+    )
+    data["truck_names"] = [
+        truck_name.split(" ")[1]
+        for graph in input.values()
+        if graph.get("trucks") is not None
+        for truck_name in graph["trucks"]
     ]
 
-    G.visit_edge(edges)
+    return data
 
+
+EXAMPLE_GRAPH = {
+    0: {
+        "coordinates": np.array([0.81568734, 0.46616891]),
+        "num_chargers": 2,
+        "available_chargers": 2,
+        "trailers": {
+            "Trailer 0": {"destination_node": 3, "start_time": 14, "end_time": 15.0},
+            "Trailer 2": {"destination_node": 3, "start_time": 9, "end_time": 10.0},
+        },
+        "trucks": None,
+    },
+    1: {
+        "coordinates": np.array([0.45070739, 0.77785083]),
+        "num_chargers": 9,
+        "available_chargers": 9,
+        "trailers": None,
+        "trucks": {"Truck A": {"battery_level": 1}},
+    },
+    2: {
+        "coordinates": np.array([0.06070113, 0.53816134]),
+        "num_chargers": 7,
+        "available_chargers": 7,
+        "trailers": None,
+        "trucks": {"Truck B": {"battery_level": 1}},
+    },
+    3: {
+        "coordinates": np.array([0.39932656, 0.17680608]),
+        "num_chargers": 8,
+        "available_chargers": 8,
+        "trailers": {
+            "Trailer 1": {"destination_node": 2, "start_time": 16, "end_time": 17.5}
+        },
+        "trucks": None,
+    },
+}
+
+if __name__ == "__main__":
+    G = EVRPGraph(
+        num_nodes=4,
+        num_trailers=3,
+        num_trucks=2,
+        plot_attributes=True,
+        data=EXAMPLE_GRAPH,
+    )
+    # add edges that where visited
+    edges = [(1, 0, 0, None, 1), (2, 0, 1, None, 2), (0, 3, 0, 2, 3)]
+
+    print(G._nodes)
+
+    for edge in edges:
+        fig, ax = plt.subplots()
+
+        G.draw(ax=ax, with_labels=True)
+        G.clear()
+        edge = G.visit_edge([edge])
+        G.update_attributes(edge)
+        plt.show(bbox_inches="tight")
+
+    fig, ax = plt.subplots()
     G.draw(ax=ax, with_labels=True)
     plt.show(bbox_inches="tight")
+
     print(G._edges)
     print(G._nodes)
