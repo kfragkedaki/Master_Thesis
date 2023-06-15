@@ -93,7 +93,7 @@ class EVRPNetwork:
         )
 
     def draw(
-        self, graph_idxs: np.ndarray, selected=[], with_labels: bool = False, file="./"
+        self, graph_idxs: np.ndarray, selected=[], with_labels: bool = False, file="./", name=None
     ) -> any:
         """
         Draw multiple graphs in a matplotlib grid.
@@ -110,7 +110,6 @@ class EVRPNetwork:
         num_rows = np.ceil(len(graph_idxs) / num_columns).astype(int)
 
         # plot each graph in a 3 x num_rows grid
-        plt.clf()
         fig = plt.figure(figsize=(5 * num_columns, 5 * num_rows))
 
         for n, graph_idx in enumerate(graph_idxs):
@@ -136,7 +135,7 @@ class EVRPNetwork:
 
         # plt.show(bbox_inches="tight")
         time = selected[-1] if len(selected) > 0 else 0
-        plt.savefig(f"{file}/{int(time)}.png", bbox_inches="tight")
+        plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
 
         # convert to plot to rgb-array
         fig.canvas.draw()
@@ -145,7 +144,7 @@ class EVRPNetwork:
 
         return image
 
-    def visit_edges(self, transition_matrix: np.ndarray) -> None:
+    def visit_edges(self, transition_matrix: np.ndarray) -> np.array:
         """
         Visits each edges specified in the transition matrix.
 
@@ -153,59 +152,66 @@ class EVRPNetwork:
             transition_matrix (np.ndarray): Shape num_graphs x 2
                 where each row is [source_node_idx, target_node_idx, truck, trailer, index].
         """
+        edges=[]
         for i, row in enumerate(transition_matrix):
-            self.graphs[i].visit_edge(row)
+            edges.append(self.graphs[i].visit_edge(row))
 
-    def update_attributes(self, state, previous_state) -> None:
-        _, num_trucks, _ = state.trucks_locations.shape
-        _, num_trailers, _ = state.trailers_locations.shape
-        _, num_nodes, _ = state.avail_chargers.shape
+        return edges
 
-        trucks_names = get_truck_names()
+    # def update_attributes(self, state, previous_state) -> None:
+    #     _, num_trucks, _ = state.trucks_locations.shape
+    #     _, num_trailers, _ = state.trailers_locations.shape
+    #     _, num_nodes, _ = state.avail_chargers.shape
+
+    #     trucks_names = get_truck_names()
+    #     for i, graph in enumerate(self.graphs):
+    #         for node_index in range(num_nodes):
+    #             chargers = state.avail_chargers[i, node_index, 0]
+    #             graph._nodes[node_index]["available_chargers"] = int(chargers)
+
+    #         for truck_index in range(num_trucks):
+    #             location_prev = int(previous_state.trucks_locations[i, truck_index, 0])
+    #             graph._nodes[location_prev]["trucks"] = None
+
+    #         for truck_index in range(num_trucks):
+    #             location = int(state.trucks_locations[i, truck_index, 0])
+    #             battery_level = state.trucks_battery_levels[i, truck_index, 0]
+
+    #             truck_name = f"Truck {trucks_names[truck_index]}"  # Replace with actual truck name mapping
+    #             data = {"battery_level": int(battery_level)}
+    #             if graph._nodes[location]["trucks"] != None:
+    #                 graph._nodes[location]["trucks"][truck_name] = data
+    #             else:
+    #                 graph._nodes[location]["trucks"] = {truck_name: data}
+
+    #         for trailer_index in range(num_trailers):
+    #             location_prev = int(
+    #                 previous_state.trailers_locations[i, trailer_index, 0]
+    #             )
+    #             graph._nodes[location_prev]["trailers"] = None
+
+    #         for trailer_index in range(num_trailers):
+    #             trailer_name = f"Trailer {trailer_index}"
+    #             location = int(state.trailers_locations[i, trailer_index, 0])
+
+    #             data = {
+    #                 "destination_node": int(
+    #                     state.trailers_destinations[i, trailer_index, 0]
+    #                 ),
+    #                 "start_time": float(state.trailers_start_time[i, trailer_index, 0]),
+    #                 "end_time": float(state.trailers_end_time[i, trailer_index, 0]),
+    #                 "status": int(
+    #                     state.trailers_status[i, trailer_index, 0]
+    #                 ),  # 1: "Available", 0: "Pending"
+    #             }
+    #             if graph._nodes[location]["trailers"] != None:
+    #                 graph._nodes[location]["trailers"][trailer_name] = data
+    #             else:
+    #                 graph._nodes[location]["trailers"] = {trailer_name: data}
+
+    def update_attributes(self, edge) -> None:
         for i, graph in enumerate(self.graphs):
-            for node_index in range(num_nodes):
-                chargers = state.avail_chargers[i, node_index, 0]
-                graph._nodes[node_index]["available_chargers"] = int(chargers)
-
-            for truck_index in range(num_trucks):
-                location_prev = int(previous_state.trucks_locations[i, truck_index, 0])
-                graph._nodes[location_prev]["trucks"] = None
-
-            for truck_index in range(num_trucks):
-                location = int(state.trucks_locations[i, truck_index, 0])
-                battery_level = state.trucks_battery_levels[i, truck_index, 0]
-
-                truck_name = f"Truck {trucks_names[truck_index]}"  # Replace with actual truck name mapping
-                data = {"battery_level": int(battery_level)}
-                if graph._nodes[location]["trucks"] != None:
-                    graph._nodes[location]["trucks"][truck_name] = data
-                else:
-                    graph._nodes[location]["trucks"] = {truck_name: data}
-
-            for trailer_index in range(num_trailers):
-                location_prev = int(
-                    previous_state.trailers_locations[i, trailer_index, 0]
-                )
-                graph._nodes[location_prev]["trailers"] = None
-
-            for trailer_index in range(num_trailers):
-                trailer_name = f"Trailer {trailer_index}"
-                location = int(state.trailers_locations[i, trailer_index, 0])
-
-                data = {
-                    "destination_node": int(
-                        state.trailers_destinations[i, trailer_index, 0]
-                    ),
-                    "start_time": float(state.trailers_start_time[i, trailer_index, 0]),
-                    "end_time": float(state.trailers_end_time[i, trailer_index, 0]),
-                    "status": int(
-                        state.trailers_status[i, trailer_index, 0]
-                    ),  # 1: "Available", 0: "Pending"
-                }
-                if graph._nodes[location]["trailers"] != None:
-                    graph._nodes[location]["trailers"][trailer_name] = data
-                else:
-                    graph._nodes[location]["trailers"] = {trailer_name: data}
+            graph.update_attributes(edge[i])
 
     def get_graph_positions(self) -> torch.Tensor:
         """

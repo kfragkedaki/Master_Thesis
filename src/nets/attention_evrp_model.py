@@ -118,7 +118,7 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["input"] = input["coords"].cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
-        cost, pi, _log_trailers, _log_trucks, _log_nodes = self.step(input, embeddings)
+        cost, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(input, embeddings)
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
@@ -126,7 +126,7 @@ class AttentionEVRPModel(nn.Module):
             _log_trailers, _log_trucks, _log_nodes, pi
         )
         if return_pi:
-            return cost, (ll_trailer + ll_truck + ll_node), pi
+            return cost, (ll_trailer + ll_truck + ll_node), pi, decision
 
         return cost, ll_trailer + ll_truck + ll_node  # tensor(batch_size) both
 
@@ -169,15 +169,17 @@ class AttentionEVRPModel(nn.Module):
             sequences_nodes.append(node)
 
             i += 1
+            
+        cost = torch.where(
+            state.force_stop == 1, state.lengths.sum(1)*5, state.lengths.sum(1)
+        ) # TODO test other options *1.5?
 
-        print("!!!!!!!!!!!DONE!!!!!!!!! ", i)
-        # cost = torch.where(
-        #     state.force_stop == 1, torch.tensor(100000), state.lengths.sum(1)
-        # ) # TODO test other options *1.5?
+        print(state.decision.shape)
         # Collected lists, return Tensor
         return (
-            state.lengths.sum(1),  # (batch_size,)
-            state.visited_.transpose(0, 1),  # (5, batch_size, time)
+            cost,  # (batch_size,)
+            state.visited_.transpose(0,1),  # (5, batch_size, time)
+            state.decision,
             torch.stack(outputs_trailers, 1),  # (batch_size, time, trailer_size)
             torch.stack(outputs_trucks, 1),  # (batch_size, time, truck_size)
             torch.stack(outputs_nodes, 1),  # (batch_size, time, graph_size)
@@ -319,8 +321,8 @@ class AttentionEVRPModel(nn.Module):
                 and previous_state is not None
             ):
                 self.graphs.remove_edges()
-                self.graphs.visit_edges(tensor_to_tuples(state.visited_))
-                self.graphs.update_attributes(state, previous_state)
+                edge = self.graphs.visit_edges(tensor_to_tuples(state.visited_))
+                self.graphs.update_attributes(edge)
                 self.graphs.draw(
                     graph_idxs=range(self.opts.display_graphs),
                     selected=selected,
@@ -332,14 +334,15 @@ class AttentionEVRPModel(nn.Module):
                     graph_idxs=range(self.opts.display_graphs),
                     with_labels=True,
                     file=file,
+                    name="initial",
                 )
 
 
-def tensor_to_tuples(tensor):
-    batch_size, features, time = tensor.shape
+def tensor_to_tuples(visited):
+    batch_size, features, time = visited.shape
     edges = []
     for b in range(batch_size):
-        batch_list = tuple(tensor[b, :, time - 1].tolist())
+        batch_list = tuple(visited[b, :, time - 1].tolist())
         edges.append([batch_list])
 
     return edges

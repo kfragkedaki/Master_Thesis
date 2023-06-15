@@ -129,8 +129,6 @@ class GraphDecoder(nn.Module):
             .view(-1, num_steps, 1, self.num_heads * val_size)
         )
 
-        # Now projecting the glimpse is not needed since this can be absorbed into project_out
-        # final_Q = self.project_glimpse(glimpse)
         final_Q = glimpse
         # Batch matrix multiplication to compute logits (batch_size, num_steps, graph_size)
         # logits = 'compatibility'
@@ -392,7 +390,7 @@ class GraphDecoderEVRP(GraphDecoder):
             )
             if feed_forward_hidden > 0
             else nn.Linear(embed_dim, embed_dim)
-        )  # TODO check without this  as well
+        )
         self.select_truck = nn.Linear(embed_dim * 2, num_trucks)  # vehicle selection
 
         # Need to include the updated information per node in (glimpse key, glimpse value, logit key)
@@ -435,13 +433,10 @@ class GraphDecoderEVRP(GraphDecoder):
         log_p, mask = self._get_log_p(
             fixed_attention, state, selected_trailer, selected_truck, normalize
         )
-
         # Select the indices of the next nodes in the sequences, result (batch_size) long
         selected_node = self._select_node(
             log_p.exp()[:, 0, :], mask[:, 0, :]
         )  # Squeeze out steps dimension
-        # selected = self._select_node(log_p.exp()[:, 0, :], mask[:, 0, :], state, truck,
-        #                              sequences)  # Squeeze out steps dimension
 
         return (selected_trailer, selected_truck, selected_node), (
             log_trailer,
@@ -459,20 +454,20 @@ class GraphDecoderEVRP(GraphDecoder):
         # Compute keys and values for the nodes
         glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
 
-        # TODO Fix Compute the mask
-        mask = state.get_mask(truck)  # [batch_size, 1, graph_size]
+        node_masking = state.get_mask(truck)  # [batch_size, 1, graph_size]
 
         # Compute logits (unnormalized log_p)  log_p:[batch_size, num_veh, graph_size], glimpse:[batch_size, num_veh, embed_dim]
         log_p, glimpse = self._get_attention_glimpse(
-            query, glimpse_K, glimpse_V, logit_K, mask
+            query, glimpse_K, glimpse_V, logit_K, node_masking
         )
 
         if normalize:
             log_p = torch.log_softmax(log_p / self.temp, dim=-1)
 
-        assert not torch.isnan(log_p).any()
+        assert not torch.isnan(log_p).any(), \
+            f"Current masking scheme: {node_masking}, log_p: {log_p}, Trailer: {trailer}, Truck {truck}, normalize{normalize}"
 
-        return log_p, mask
+        return log_p, node_masking
 
     def _get_parallel_step_context(self, embeddings, state, trailer, truck):
         """
@@ -487,16 +482,16 @@ class GraphDecoderEVRP(GraphDecoder):
         # In case truck and trailer are not on the same node,
         # we use then truck and trailer nodes.
 
-        from_node = state.trucks_locations[state.ids, truck[:, None]].squeeze(
+        from_node = state.trucks_locations[state.ids, truck.unsqueeze(-1)].squeeze(
             -1
         )  # (batch_size, 1)
         trailer_node_ids = state.trailers_locations[
-            state.ids, trailer[:, None]
+            state.ids, trailer.unsqueeze(-1)
         ].squeeze(
             -1
         )  # (batch_size, 1)
         destination_node_ids = state.trailers_destinations[
-            state.ids, trailer[:, None]
+            state.ids, trailer.unsqueeze(-1)
         ].squeeze(-1)
 
         to_node = torch.where(
@@ -536,7 +531,7 @@ class GraphDecoderEVRP(GraphDecoder):
 
     def trailer_select(self, state, embeddings):
         batch_size, _, embedding_size = embeddings.size()
-        embeddings_extended = torch.cat((embeddings, state.node_trucks), -1)
+        embeddings_extended = torch.cat((embeddings, state.node_trucks), 2)
         trailer_embeddings = embeddings_extended.gather(
             1,
             state.trailers_locations.to(torch.int64).expand(
@@ -546,13 +541,6 @@ class GraphDecoderEVRP(GraphDecoder):
         trailer_context = trailer_embeddings.contiguous().reshape(batch_size, -1)
         out = self.FF_trailer(trailer_context)
         out = self.select_trailer(out)
-
-        # masked pending trailer or trailer that have reached their destination node TODO should I include also the pending trailer?
-        # TOD0 also consider that if you add the status then you need to adjust the truck_select
-        # mask = torch.logical_or(torch.eq(state.trailers_destinations, state.trailers_locations),
-        #     torch.eq(state.trailers_status, torch.zeros(size=state.trailers_status.shape)))
-        # The purpose of the trailer status is that we do not want to bring more trailers to the node when in the previous step we have selected
-        # a truck to move towards a node, but maybe we should let the algorithm learn that from the cost and mask only the unfeasible solutions
 
         mask = torch.eq(state.trailers_destinations, state.trailers_locations)
 
@@ -564,11 +552,8 @@ class GraphDecoderEVRP(GraphDecoder):
         if self.decode_type == "greedy":
             _, trailer = probs.max(1)  # index of the trailer so (batch_size,)
 
-            trailer[
-                masking
-            ] = (
-                -1
-            )  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
+            # if a batch has finished then do not pick a trailer
+            trailer[masking] = -1
 
             assert (
                 not mask[~masking]
@@ -578,9 +563,9 @@ class GraphDecoderEVRP(GraphDecoder):
             ), f"Decode greedy: infeasible action has maximum probability for trailer {out}"
 
         elif self.decode_type == "sampling":
-            trailer = torch.full((batch_size,), -1)  # TODO check with Jonas
+            # if a batch has finished then do not pick a trailer
+            trailer = torch.full((batch_size,), -1)
             trailer[~masking] = probs[~masking].multinomial(1).squeeze(1)
-            # trailer = probs.multinomial(1).squeeze(-1) # TODO same as above, (but if all nans does not work ith multinomial)
 
             while (
                 mask[~masking]
@@ -593,16 +578,12 @@ class GraphDecoderEVRP(GraphDecoder):
         else:
             assert False, "Unknown decode type"
 
-        # TODO based on the above code, we currently have nans when a batch has ended
-        # assert not torch.isnan(log_trailer).any(), "Zero probabilities for truck"
-
         return trailer, log_trailer
 
     def truck_select(self, state, embeddings, trailer):
         batch_size, _, embedding_size = embeddings.size()
-        # trailer_embedding = embeddings.gather(
-        #     1, trailer[:, None, None].expand(-1, -1, 128)
-        # ) TODO check
+        num_trucks = state.trucks_battery_levels.shape[1]
+
         trailer_embeddings = []
         for i in range(batch_size):
             if trailer[i] == -1:
@@ -611,31 +592,43 @@ class GraphDecoderEVRP(GraphDecoder):
                     torch.zeros(1, embedding_size).to(embeddings.device)
                 )
             else:
+                selected_trailer_node = (
+                    state.trailers_locations[i][trailer[i]].squeeze(-1).to(torch.int)
+                )
                 # A valid trailer exists for this batch, calculate its embedding
-                trailer_embeddings.append(embeddings[i, trailer[i]].view(1, -1))
+                trailer_embedding = embeddings[
+                    i, selected_trailer_node
+                ]  # (batch_size,)
+                trailer_embeddings.append(
+                    trailer_embedding.view(1, -1)
+                )  # (1, batch_size)
 
-        trailer_embedding = torch.cat(trailer_embeddings, dim=0).unsqueeze(1)
-        trailer_out = self.FF_selected_trailer(trailer_embedding)
+        trailer_out = torch.cat(trailer_embeddings, dim=0).unsqueeze(1)
+        # trailer_out = self.FF_selected_trailer(trailer_out)  # todo check without this
 
         trucks_coords = state.coords.gather(
             1, state.trucks_locations.contiguous().expand(-1, -1, 2).to(torch.int64)
         ).transpose(0, 1)
 
-        trucks_battery_levels = state.trucks_battery_levels.transpose(0, 1)
-        truck_context = torch.cat(  # (batch_size, num_trucks, 3)
-            (
-                trucks_coords[0, :],
-                trucks_battery_levels[0, :],
-                trucks_coords[1, :],
-                trucks_battery_levels[1, :],
-            ),
-            -1,
-        ).contiguous()[:, None, :]
+        trucks_battery_levels = state.trucks_battery_levels.transpose(
+            0, 1
+        )  # (trucks, batch_size, 1)
+        truck_context = (
+            torch.cat(
+                [
+                    torch.cat((trucks_coords[i, :], trucks_battery_levels[i, :]), dim=1)
+                    for i in range(num_trucks)
+                ],
+                dim=1,
+            )
+            .contiguous()
+            .unsqueeze(1)
+        )
         truck_out = self.FF_truck(truck_context)
 
-        context = torch.cat((trailer_out, truck_out), -1).view(
-            batch_size, embedding_size * 2
-        )
+        context = torch.cat((trailer_out, truck_out), -1).squeeze(
+            1
+        )  # batch_size, embedding_size * 2
         out = self.select_truck(context)
 
         # mask trucks that do not have battery
@@ -648,13 +641,7 @@ class GraphDecoderEVRP(GraphDecoder):
         masking = torch.all(mask, dim=1).squeeze(-1)
         if self.decode_type == "greedy":
             _, truck = probs.max(1)  # index of the truck so (batch_size,)
-
-            truck[
-                masking
-            ] = (
-                -1
-            )  # TODO Should I keep this and change accordingly the code, this indicates that if one batch has finished then set trailer to -1
-
+            truck[masking] = -1
             assert (
                 not mask[~masking]
                 .squeeze(-1)
@@ -663,12 +650,7 @@ class GraphDecoderEVRP(GraphDecoder):
             ), "Decode greedy: infeasible action has maximum probability for truck"
 
         elif self.decode_type == "sampling":
-            # truck = torch.softmax(out, dim=1).multinomial(1).squeeze(-1)
-            # while mask.squeeze(-1).gather(1, truck.unsqueeze(-1)).data.any():
-            #     print("Sampled bad values, resampling for truck!")
-            #     truck = truck.multinomial(1).squeeze(1)
-
-            truck = torch.full((batch_size,), -1)  # TODO check with Jonas
+            truck = torch.full((batch_size,), -1)
             truck[~masking] = probs[~masking].multinomial(1).squeeze(1)
 
             while (
@@ -682,19 +664,13 @@ class GraphDecoderEVRP(GraphDecoder):
         else:
             assert False, "Unknown decode type"
 
-        # truck[torch.all(mask, dim=1).squeeze(-1)] = -1  # TODO if limited chargers in a node, then all trucks are masked
-        # assert not torch.isnan(log_truck).any(), "Zero probabilities for truck"
-
         return truck, log_truck
 
     def _select_node(self, probs, mask):
         assert (probs == probs).all(), "Probs should not contain any nans"
-        # selected = (state.get_current_node()).clone()
-        # batch_size, _ = (state.get_current_node()).size()
 
         if self.decode_type == "greedy":
             _, selected = probs.max(1)
-            # _, selected[torch.arange(batch_size), veh] = probs.max(1)
             assert not mask.gather(
                 1, selected.unsqueeze(-1)
             ).data.any(), "Decode greedy: infeasible action has maximum probability"
