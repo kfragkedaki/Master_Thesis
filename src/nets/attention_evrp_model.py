@@ -10,6 +10,7 @@ from src.utils.beam_search import CachedLookup
 
 import os
 
+
 class AttentionModelFixed(NamedTuple):
     """
     Context for AttentionModel decoder that is fixed during decoding so can be precomputed/cached
@@ -85,7 +86,14 @@ class AttentionEVRPModel(nn.Module):
         if temp is not None:  # Do not change temperature if not provided
             self.temp = temp
 
-    def forward(self, input: dict = {}, graphs: tuple = (), epoch=0, type="initial", return_pi=False):
+    def forward(
+        self,
+        input: dict = {},
+        graphs: tuple = (),
+        epoch=0,
+        type="initial",
+        return_pi=False,
+    ):
         """
         :param input: (batch_size, graph_size, node_dim) input node features or dictionary with multiple tensors
         :param return_pi: whether to return the output sequences, this is optional as it is not compatible with
@@ -118,7 +126,9 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["input"] = input["coords"].cpu().detach()
         self.encoder_data["embeddings"] = embeddings.cpu().detach()
 
-        cost, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(input, embeddings)
+        cost, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(
+            input, embeddings
+        )
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
@@ -167,17 +177,17 @@ class AttentionEVRPModel(nn.Module):
             sequences_nodes.append(node)
 
             i += 1
-            
+
         cost = torch.where(
-            state.force_stop == 1, state.lengths.sum(1)*5, state.lengths.sum(1)
-        ) # TODO test other options *1.5?
+            state.force_stop == 1, state.lengths.sum(1) * 5, state.lengths.sum(1)
+        )  # TODO test other options *1.5?
 
         print(state.decision.shape)
         # Collected lists, return Tensor
         return (
             cost,  # (batch_size,)
-            state.visited_.transpose(0,1),  # (5, batch_size, time)
-            state.decision,   # (batch_size, 3, time) 3 because (selected_trailer, selected_truck, selected_node)
+            state.visited_.transpose(0, 1),  # (5, batch_size, time)
+            state.decision,  # (batch_size, 3, time) 3 because (selected_trailer, selected_truck, selected_node)
             torch.stack(outputs_trailers, 1),  # (batch_size, time, trailer_size)
             torch.stack(outputs_trucks, 1),  # (batch_size, time, truck_size)
             torch.stack(outputs_nodes, 1),  # (batch_size, time, graph_size)
@@ -199,8 +209,10 @@ class AttentionEVRPModel(nn.Module):
         )
 
         assert (
-                log_trailers > -1000
-        ).data.all(), "Logprobs of trailers should not be -inf, check sampling procedure!"
+            log_trailers > -1000
+        ).data.all(), (
+            "Logprobs of trailers should not be -inf, check sampling procedure!"
+        )
 
         mask_trucks = truck == -1
         index_truck = torch.where(mask_trucks, torch.zeros_like(truck), truck)
@@ -212,7 +224,7 @@ class AttentionEVRPModel(nn.Module):
         )
 
         assert (
-                log_trucks > -1000
+            log_trucks > -1000
         ).data.all(), "Logprobs of trucks should not be -inf, check sampling procedure!"
 
         mask_nodes = node == -1
@@ -225,7 +237,7 @@ class AttentionEVRPModel(nn.Module):
         )
 
         assert (
-                log_nodes > -1000
+            log_nodes > -1000
         ).data.all(), "Logprobs should not be -inf, check sampling procedure!"
 
         # Calculate log_likelihood
@@ -307,7 +319,7 @@ class AttentionEVRPModel(nn.Module):
         return CachedLookup(self._precompute(embeddings))
 
     def get_graphs(self, state=None, selected=[]):
-        file = self.opts.save_dir + "/graphs/" + self.type + '/' + str(self.epoch)
+        file = self.opts.save_dir + "/graphs/" + self.type + "/" + str(self.epoch)
         name = "initial"
         if self.opts.display_graphs is not None and self.graphs is not None:
             if not os.path.exists(file):
@@ -324,7 +336,7 @@ class AttentionEVRPModel(nn.Module):
                 selected=selected,
                 with_labels=True,
                 file=file,
-                name=name
+                name=name,
             )
 
 

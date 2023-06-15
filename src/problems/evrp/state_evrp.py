@@ -33,7 +33,7 @@ class StateEVRP(NamedTuple):
     i: torch.Tensor  # Keeps track of step
     force_stop: torch.Tensor
 
-    decision:torch.Tensor
+    decision: torch.Tensor
 
     def __getitem__(self, key):
         assert torch.is_tensor(key) or isinstance(
@@ -56,7 +56,7 @@ class StateEVRP(NamedTuple):
             visited_=self.visited_[key],
             lengths=self.lengths[key],
             cur_coord=self.cur_coord[key] if self.cur_coord is not None else None,
-            decision=self.decision[key]
+            decision=self.decision[key],
         )
 
     @staticmethod
@@ -97,7 +97,7 @@ class StateEVRP(NamedTuple):
             force_stop=torch.zeros(batch_size, dtype=torch.int64, device=coords.device),
             decision=torch.zeros(
                 batch_size, 3, 1, dtype=torch.uint8, device=coords.device
-            )
+            ),
         )
 
     # def get_final_cost(self):
@@ -108,7 +108,14 @@ class StateEVRP(NamedTuple):
 
     def update(self, selected_trailer, selected_truck, selected_node):
         # TODO Check different scenarios
-        decision = torch.cat((selected_trailer.unsqueeze(-1), selected_truck.unsqueeze(-1), selected_node.unsqueeze(-1)), dim=1).unsqueeze(-1)
+        decision = torch.cat(
+            (
+                selected_trailer.unsqueeze(-1),
+                selected_truck.unsqueeze(-1),
+                selected_node.unsqueeze(-1),
+            ),
+            dim=1,
+        ).unsqueeze(-1)
         # Calculate to_node
         from_node = self.trucks_locations[self.ids, selected_truck[self.ids]].squeeze(
             -1
@@ -175,7 +182,9 @@ class StateEVRP(NamedTuple):
         valid_trailer_ids = self.ids[selected_trailer_mask]
 
         trailers_locations[valid_trailer_ids, valid_trailer_indices] = torch.where(
-            condition[selected_trailer_mask].unsqueeze(-1),  # if not valid truck this will be false
+            condition[selected_trailer_mask].unsqueeze(
+                -1
+            ),  # if not valid truck this will be false
             selected_node[selected_trailer_mask]
             .unsqueeze(-1)
             .unsqueeze(-1)
@@ -201,7 +210,7 @@ class StateEVRP(NamedTuple):
         ] = 1
         node_trailers[
             self.ids.unsqueeze(-1).expand(trailers_locations.shape),
-            trailers_locations.to(torch.int)
+            trailers_locations.to(torch.int),
         ] = 1
 
         # Add the length
@@ -261,7 +270,7 @@ class StateEVRP(NamedTuple):
             trucks_locations=trucks_locations,
             trucks_battery_levels=trucks_battery_levels,
             trailers_locations=trailers_locations,
-            decision=decision
+            decision=decision,
         )
 
     def all_finished(self):
@@ -273,7 +282,7 @@ class StateEVRP(NamedTuple):
         finished = torch.eq(self.trailers_locations, self.trailers_destinations)
         finished_batches = torch.all(finished, dim=1)
         if (
-            self.i > (graph_size**num_trailers)/ num_trucks
+            self.i > (graph_size**num_trailers) / num_trucks
         ):  # TODO Terminate when running for long (check condition)
             print(
                 f"Finished Batches {torch.sum(finished_batches).item()}/{finished_batches.shape[0]}"
@@ -327,7 +336,10 @@ class StateEVRP(NamedTuple):
         # mask all other nodes apart from truck's location if batch has finished
         masking_total = torch.logical_or(mask, mask_distanced_nodes)
         output = torch.where(
-            torch.logical_or(condition.unsqueeze(-1), torch.all(masking_total, dim=1).unsqueeze(-1).expand(-1, 4, -1)),
+            torch.logical_or(
+                condition.unsqueeze(-1),
+                torch.all(masking_total, dim=1).unsqueeze(-1).expand(-1, 4, -1),
+            ),
             ~mask,
             masking_total,
         )

@@ -464,8 +464,9 @@ class GraphDecoderEVRP(GraphDecoder):
         if normalize:
             log_p = torch.log_softmax(log_p / self.temp, dim=-1)
 
-        assert not torch.isnan(log_p).any(), \
-            f"Current masking scheme: {node_masking}, log_p: {log_p}, Trailer: {trailer}, Truck {truck}, normalize{normalize}"
+        assert not torch.isnan(
+            log_p
+        ).any(), f"Current masking scheme: {node_masking}, log_p: {log_p}, Trailer: {trailer}, Truck {truck}, normalize{normalize}"
 
         return log_p, node_masking
 

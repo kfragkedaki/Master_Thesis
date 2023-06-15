@@ -43,7 +43,7 @@ class EVRPGraph:
             self.truck_names = result["truck_names"]
             nx.set_node_attributes(self.graph, "lightblue", "node_color")
             nx.set_node_attributes(self.graph, data)
-        elif len(kwargs) > 0: 
+        elif len(kwargs) > 0:
             self.set_default_attributes(**kwargs)
         else:
             self.set_default_attributes()
@@ -503,7 +503,7 @@ class EVRPGraph:
         node_two_pos = self.graph.nodes[node2_idx]["coordinates"]
 
         return np.linalg.norm(node_one_pos - node_two_pos)
-    
+
     def get_neighbors(self, cur_node, r_threshold=0.6) -> np.ndarray:
         nns = []
         for node in self.graph.nodes():

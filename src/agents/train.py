@@ -48,7 +48,12 @@ def rollout(model, dataset, opts, epoch=0, type="baseline"):
 
     def eval_model_bat(batch_data, graph_batch):
         with torch.no_grad():
-            cost, _ = model(move_to(batch_data, opts.device), graphs=graph_batch, epoch=epoch, type=type)
+            cost, _ = model(
+                move_to(batch_data, opts.device),
+                graphs=graph_batch,
+                epoch=epoch,
+                type=type,
+            )
         return cost.data.cpu()
 
     return torch.cat(

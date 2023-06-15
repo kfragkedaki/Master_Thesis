@@ -93,7 +93,12 @@ class EVRPNetwork:
         )
 
     def draw(
-        self, graph_idxs: np.ndarray, selected=[], with_labels: bool = False, file=None, name=None
+        self,
+        graph_idxs: np.ndarray,
+        selected=[],
+        with_labels: bool = False,
+        file=None,
+        name=None,
     ) -> any:
         """
         Draw multiple graphs in a matplotlib grid.
@@ -155,7 +160,7 @@ class EVRPNetwork:
             transition_matrix (np.ndarray): Shape num_graphs x 2
                 where each row is [source_node_idx, target_node_idx, truck, trailer, index].
         """
-        edges=[]
+        edges = []
         for i, row in enumerate(transition_matrix):
             edges.append(self.graphs[i].visit_edge(row))
 
