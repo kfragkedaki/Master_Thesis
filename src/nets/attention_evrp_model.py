@@ -308,13 +308,13 @@ class AttentionEVRPModel(nn.Module):
 
     def get_graphs(self, state=None, selected=[]):
         file = self.opts.save_dir + "/graphs/" + self.type + '/' + str(self.epoch)
-        name = None
+        name = "initial"
         if self.opts.display_graphs is not None and self.graphs is not None:
             if not os.path.exists(file):
                 os.makedirs(file)
 
             if state is not None:
-                name = "initial"
+                name = None
                 self.graphs.clear()
                 edge = self.graphs.visit_edges(tensor_to_tuples(state.visited_))
                 self.graphs.update_attributes(edge)
