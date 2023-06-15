@@ -182,7 +182,6 @@ class AttentionEVRPModel(nn.Module):
             state.force_stop == 1, state.lengths.sum(1) * 5, state.lengths.sum(1)
         )  # TODO test other options *1.5?
 
-        print(state.decision.shape)
         # Collected lists, return Tensor
         return (
             cost,  # (batch_size,)
