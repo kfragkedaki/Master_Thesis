@@ -25,7 +25,6 @@ class StateEVRP(NamedTuple):
     trucks_battery_levels: torch.Tensor  # trucks battery level
 
     trailers_locations: torch.Tensor  # trailers location
-    trailers_status: torch.Tensor  # trailers' status
 
     visited_: torch.Tensor  # Keeps track of nodes that have been visited
     lengths: torch.Tensor
@@ -50,7 +49,6 @@ class StateEVRP(NamedTuple):
             trucks_battery_levels=self.trucks_battery_levels[key],
             trailers_locations=self.trailers_locations[key],
             trailers_destinations=self.trailers_destinations[key],
-            trailers_status=self.trailers_status[key],
             trailers_start_time=self.trailers_start_time[key],
             trailers_end_time=self.trailers_end_time[key],
             visited_=self.visited_[key],
@@ -82,7 +80,6 @@ class StateEVRP(NamedTuple):
             trucks_battery_levels=input["trucks_battery_levels"],
             trailers_locations=input["trailers_locations"],
             trailers_destinations=input["trailers_destinations"],
-            trailers_status=input["trailers_status"],
             trailers_start_time=input["trailers_start_time"],
             trailers_end_time=input["trailers_end_time"],
             # Keep visited with depot so we can scatter efficiently (if there is an action for depot)

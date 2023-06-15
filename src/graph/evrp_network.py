@@ -237,7 +237,7 @@ class EVRPNetwork:
         Returns the trailers in each graph.
 
         Returns:
-            dict: Trailers' location, destination and status each in shape
+            dict: Trailers' location and destination each in shape
                 (num_graphs, num_trailers, 1)
         """
         state = {}
@@ -245,14 +245,13 @@ class EVRPNetwork:
         state["destinations"] = torch.zeros(
             size=(self.num_graphs, self.num_trailers, 1)
         )
-        state["status"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
         state["start_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
         state["end_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
 
         for graph_index, graph in enumerate(self.graphs):
             trailers = graph._node_trailers
 
-            # True if trailer exists, and not in destination node and if status not pending
+            # True if trailer exists, and not in destination node
             for node_index, trailer_node in enumerate(trailers):
                 if trailer_node is not None:
                     for name, value in trailer_node.items():
@@ -261,7 +260,6 @@ class EVRPNetwork:
                         state["destinations"][graph_index, trailer_index, 0] = value[
                             "destination_node"
                         ]
-                        state["status"][graph_index, trailer_index, 0] = value["status"]
                         state["start_time"][graph_index, trailer_index, 0] = value[
                             "start_time"
                         ]

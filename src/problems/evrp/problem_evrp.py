@@ -7,7 +7,7 @@ from src.utils.beam_search import beam_search
 from src.utils.truck_naming import get_truck_names
 from src.graph.evrp_network import EVRPNetwork
 from src.graph.evrp_graph import EVRPGraph
-
+from src.utils.load_json import load_json, get_information_from_dict
 
 class EVRP(object):
     NAME = "evrp"
@@ -50,16 +50,15 @@ class EVRP(object):
 
 
 def make_instances(
-    num_samples, graph_size, num_trucks, num_trailers, truck_names, *args
+    num_samples, num_nodes, num_trucks, num_trailers, truck_names, graph=None, *args
 ):
-    # TODO improve this: you already have it in a nice format
-
     sampler = EVRPNetwork(
         num_graphs=num_samples,
-        num_nodes=graph_size,
+        num_nodes=num_nodes,
         num_trucks=num_trucks,
         num_trailers=num_trailers,
         truck_names=truck_names,
+        graphs=graph,
     )
 
     coords = sampler.get_graph_positions()
@@ -76,7 +75,6 @@ def make_instances(
             trucks_state["battery_levels"][i],
             trailers_state["locations"][i],
             trailers_state["destinations"][i],
-            trailers_state["status"][i],
             trailers_state["start_time"][i],
             trailers_state["end_time"][i],
         )
@@ -94,7 +92,6 @@ def make_instance(args):
         trucks_battery_levels,
         trailers_locations,
         trailers_destinations,
-        trailers_status,
         trailer_start_time,
         trailer_end_time,
     ) = args
@@ -111,7 +108,6 @@ def make_instance(args):
         "trucks_battery_levels": trucks_battery_levels,
         "trailers_locations": trailers_locations,
         "trailers_destinations": trailers_destinations,
-        "trailers_status": trailers_status,
         "trailers_start_time": trailer_start_time,
         "trailers_end_time": trailer_end_time,
         "avail_chargers": torch.where(chargers > 0, 1.0, 0.0),
@@ -137,24 +133,38 @@ class EVRPDataset(Dataset):
 
         self.data_set = []
         if filename is not None:
-            assert os.path.splitext(filename)[1] == ".pkl"
+            type_file = os.path.splitext(filename)[1]
+            assert type_file == ".pkl" or type_file == ".json", "Wrong file type"
 
-            with open(filename, "rb") as f:
-                data = pickle.load(f)
-                self.data = []
-                for args in data[offset : offset + num_samples]:
-                    instance = make_instance(args)
-                    self.data.append(make_instance(args))
+            if type_file == ".pkl":
 
-                    instance["num_nodes"] = len(instance["coords"])
-                    instance["num_trucks"] = len(instance["trucks_locations"])
-                    instance["num_trailers"] = len(instance["trailers_locations"])
-                    instance["truck_names"] = truck_names
+                with open(filename, "rb") as f:
+                    data = pickle.load(f)
+                    self.data = []
+                    graphs = []
+                    for args in data[offset : offset + num_samples]:
+                        instance = make_instance(args)
 
-                    assert (
-                        len(get_truck_names(truck_names)) > instance["num_trucks"]
-                    ), "The number of truck names does not match the number of trucks"
-                    self.sampler = EVRPGraph(**instance)
+                        self.data.append(instance)
+
+                        instance["num_nodes"] = len(instance["coords"])
+                        instance["num_trucks"] = len(instance["trucks_locations"])
+                        instance["num_trailers"] = len(instance["trailers_locations"])
+                        instance["truck_names"] = truck_names
+
+                        assert (
+                            len(get_truck_names(truck_names)) > instance["num_trucks"]
+                        ), "The number of truck names does not match the number of trucks"
+                        graphs.append(EVRPGraph(**instance))
+
+                    self.sampler, self.data = make_instances(graphs=graphs)
+            else:
+                data = load_json(filename)
+                assert data is not None, "Wrong data type"
+                result = get_information_from_dict(data)
+
+                graph = [EVRPGraph(**result, data=data)]
+                self.sampler, self.data = make_instances(**result, num_samples=1, graph=graph)
         else:
             assert (
                 len(get_truck_names(truck_names)) > num_trucks
