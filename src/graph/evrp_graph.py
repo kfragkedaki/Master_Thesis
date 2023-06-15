@@ -2,6 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
+from src.utils.load_json import get_information_from_dict
 from src.utils.truck_naming import get_truck_names
 from matplotlib.lines import Line2D
 import copy
@@ -36,11 +37,6 @@ class EVRPGraph:
         # generate graph and set node position
         self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
         if data is not None:
-            result = get_information_from_dict(data)
-            self.num_nodes = result["num_nodes"]
-            self.num_trucks = result["num_trucks"]
-            self.num_trailers = result["num_trailers"]
-            self.truck_names = result["truck_names"]
             nx.set_node_attributes(self.graph, "lightblue", "node_color")
             nx.set_node_attributes(self.graph, data)
         elif len(kwargs) > 0:
@@ -58,7 +54,6 @@ class EVRPGraph:
         trailers_destinations=None,
         trucks_locations=None,
         trucks_battery_levels=1,
-        trailers_status=1,
     ):
         """
         Sets the default colors of the nodes
@@ -115,7 +110,6 @@ class EVRPGraph:
                 "destination_node": trailers_destinations[i],
                 "start_time": np.round(trailers_start_time[i], 2),
                 "end_time": trailers_end_time[i],
-                "status": trailers_status,  # 1: "Available", 0: "Pending"
             }
 
         # set trucks
@@ -514,27 +508,6 @@ class EVRPGraph:
         return nns
 
 
-def get_information_from_dict(input: dict) -> dict:
-    data = {}
-    data["num_nodes"] = len(input)
-    data["num_trucks"] = sum(
-        len(graph.get("trucks", {})) if graph.get("trucks") is not None else 0
-        for graph in input.values()
-    )
-    data["num_trailers"] = sum(
-        len(graph.get("trailers", {})) if graph.get("trailers") is not None else 0
-        for graph in input.values()
-    )
-    data["truck_names"] = [
-        truck_name.split(" ")[1]
-        for graph in input.values()
-        if graph.get("trucks") is not None
-        for truck_name in graph["trucks"]
-    ]
-
-    return data
-
-
 EXAMPLE_GRAPH = {
     0: {
         "coordinates": np.array([0.81568734, 0.46616891]),
@@ -572,10 +545,12 @@ EXAMPLE_GRAPH = {
 }
 
 if __name__ == "__main__":
+    result = get_information_from_dict(EXAMPLE_GRAPH)
     G = EVRPGraph(
-        num_nodes=4,
-        num_trailers=3,
-        num_trucks=2,
+        num_nodes=result["num_nodes"],
+        num_trailers=result["num_trailers"],
+        num_trucks=result["num_trucks"],
+        truck_names=result["truck_names"],
         plot_attributes=True,
         data=EXAMPLE_GRAPH,
     )

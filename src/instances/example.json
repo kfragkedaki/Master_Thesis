@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": 0,
+      "x": 0.81568734,
+      "y": 0.46616891,
+      "num_chargers": 2
+    },
+    {
+      "id": 1,
+      "x": 0.45070739,
+      "y": 0.77785083,
+      "num_chargers": 1
+    },
+    {
+      "id": 2,
+      "x": 0.06070113,
+      "y": 0.53816134,
+      "num_chargers": 1
+    },
+    {
+      "id": 3,
+      "x": 0.39932656,
+      "y": 0.17680608,
+      "num_chargers": 2
+    }
+  ],
+  "trucks": [
+    {
+      "id": "Truck A",
+      "startBatteryLevel": 1,
+      "originNodeId": 1
+    },
+    {
+      "id": "Truck B",
+      "startBatteryLevel": 1,
+      "originNodeId": 2
+    }
+  ],
+  "trailers": [
+    {
+      "id": "Trailer 0",
+      "originNodeId": 0,
+      "destinationNodeId": 3,
+      "startTime": 14,
+      "endTime": 15
+    },
+    {
+      "id": "Trailer 1",
+      "originNodeId": 3,
+      "destinationNodeId": 2,
+      "startTime": 16,
+      "endTime": 17.5
+    },
+        {
+      "id": "Trailer 2",
+      "originNodeId": 0,
+      "destinationNodeId": 3,
+      "startTime": 9,
+      "endTime": 10
+    }
+  ]
+}

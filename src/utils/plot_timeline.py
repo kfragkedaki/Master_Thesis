@@ -119,7 +119,7 @@ def plot_timeline(data: np.array = []) -> None:
     fig.show()
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     data = torch.tensor(
         [
             [3.0, 2.0, 0.0, -1.0, 0.0],

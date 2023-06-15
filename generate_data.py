@@ -40,7 +40,6 @@ def generate_evrp_data(dataset_size, graph_size, num_trailers, num_trucks):
         np.random.choice(graph_size, num_trailers, replace=False).tolist()
         for _ in range(dataset_size)
     ]
-    trailers_status = np.ones(shape=(dataset_size, num_trailers)).tolist()
     destinations = [
         [
             np.random.choice([n for n in range(graph_size) if n != node_id]).tolist()
@@ -67,7 +66,6 @@ def generate_evrp_data(dataset_size, graph_size, num_trailers, num_trucks):
             trucks_battery_levels,
             trailers_locations,
             destinations,
-            trailers_status,
             start_time.tolist(),
             end_time.tolist(),
         )
