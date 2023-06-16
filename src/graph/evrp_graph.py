@@ -159,7 +159,7 @@ class EVRPGraph:
                         node_trailers[destination_node] = ""
                     node_trailers[
                         destination_node
-                    ] += f"{trailer_id} : {trailer_data['start_time']:.2f} - {trailer_data['end_time']:.2f} \n"
+                    ] += f"Destination Node of {trailer_id} \n"
 
         return node_trailers
 
