@@ -303,7 +303,7 @@ class StateEVRP(NamedTuple):
     def get_mask(self, selected_truck, r_threshold=0.6):
         # Mask current node (the cost of staying on the same node remains 0, so it is the best choice)
         # Mask the nodes that the truck cannot go to because of its battery limits
-
+        graph_size = self.trailers_destinations.shape[1]
         cur_nodes = (
             self.trucks_locations[self.ids, selected_truck[self.ids]]
             .squeeze(-1)
@@ -335,7 +335,9 @@ class StateEVRP(NamedTuple):
         output = torch.where(
             torch.logical_or(
                 condition.unsqueeze(-1),
-                torch.all(masking_total, dim=1).unsqueeze(-1).expand(-1, 4, -1),
+                torch.all(masking_total, dim=1)
+                .unsqueeze(-1)
+                .expand(-1, graph_size, -1),
             ),
             ~mask,
             masking_total,

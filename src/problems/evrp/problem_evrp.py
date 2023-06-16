@@ -9,6 +9,7 @@ from src.graph.evrp_network import EVRPNetwork
 from src.graph.evrp_graph import EVRPGraph
 from src.utils.load_json import load_json, get_information_from_dict
 
+
 class EVRP(object):
     NAME = "evrp"
 
@@ -137,7 +138,6 @@ class EVRPDataset(Dataset):
             assert type_file == ".pkl" or type_file == ".json", "Wrong file type"
 
             if type_file == ".pkl":
-
                 with open(filename, "rb") as f:
                     data = pickle.load(f)
                     self.data = []
@@ -164,7 +164,9 @@ class EVRPDataset(Dataset):
                 result = get_information_from_dict(data)
 
                 graph = [EVRPGraph(**result, data=data)]
-                self.sampler, self.data = make_instances(**result, num_samples=1, graph=graph)
+                self.sampler, self.data = make_instances(
+                    **result, num_samples=1, graph=graph
+                )
         else:
             assert (
                 len(get_truck_names(truck_names)) > num_trucks
