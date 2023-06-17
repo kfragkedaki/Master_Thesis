@@ -225,7 +225,7 @@ def get_options(args=None):
 
     # Set the device
     use_cuda = torch.cuda.is_available() and not opts.no_cuda
-    use_mps = torch.backends.mps.is_available() and not opts.no_cuda and False
+    use_mps = torch.backends.mps.is_available() and not opts.no_cuda
 
     opts.device = torch.device("cuda:0" if use_cuda else "mps:0" if use_mps else "cpu")
     opts.dataParallel = (

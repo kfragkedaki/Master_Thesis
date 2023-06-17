@@ -69,19 +69,19 @@ class StateEVRP(NamedTuple):
         return StateEVRP(
             coords=coords,
             distances=(coords[:, :, None, :] - coords[:, None, :, :]).norm(p=2, dim=-1),
-            avail_chargers=input["avail_chargers"],
-            node_trucks=node_trucks,
-            node_trailers=node_trailers,
+            avail_chargers=input["avail_chargers"].to(coords.device),
+            node_trucks=node_trucks.to(coords.device),
+            node_trailers=node_trailers.to(coords.device),
             ids=torch.arange(batch_size, dtype=torch.int64, device=coords.device)[
                 :, None
             ],  # Add steps dimension
-            num_chargers=input["num_chargers"],
-            trucks_locations=input["trucks_locations"],
-            trucks_battery_levels=input["trucks_battery_levels"],
-            trailers_locations=input["trailers_locations"],
-            trailers_destinations=input["trailers_destinations"],
-            trailers_start_time=input["trailers_start_time"],
-            trailers_end_time=input["trailers_end_time"],
+            num_chargers=input["num_chargers"].to(coords.device),
+            trucks_locations=input["trucks_locations"].to(coords.device),
+            trucks_battery_levels=input["trucks_battery_levels"].to(coords.device),
+            trailers_locations=input["trailers_locations"].to(coords.device),
+            trailers_destinations=input["trailers_destinations"].to(coords.device),
+            trailers_start_time=input["trailers_start_time"].to(coords.device),
+            trailers_end_time=input["trailers_end_time"].to(coords.device),
             # Keep visited with depot so we can scatter efficiently (if there is an action for depot)
             visited_=torch.zeros(
                 batch_size, 5, 1, dtype=torch.uint8, device=coords.device
@@ -105,6 +105,7 @@ class StateEVRP(NamedTuple):
 
     def update(self, selected_trailer, selected_truck, selected_node):
         # TODO Check different scenarios
+        device = self.coords.device
         decision = torch.cat(
             (
                 selected_trailer.unsqueeze(-1),
@@ -121,7 +122,7 @@ class StateEVRP(NamedTuple):
         from_node = torch.where(
             valid_truck,
             from_node,
-            selected_node[self.ids],
+            selected_node[self.ids].to(from_node.dtype),
         )
         trailer_node_ids = self.trailers_locations[
             self.ids, selected_trailer[self.ids]
@@ -132,7 +133,7 @@ class StateEVRP(NamedTuple):
         trailer_node_ids = torch.where(
             torch.logical_and(valid_trailer, valid_truck),
             trailer_node_ids,
-            torch.tensor(-2, device=self.trucks_locations.device),
+            torch.tensor(-2, device=device, dtype=trailer_node_ids.dtype),
         )
 
         # check if trailer and truck are on the same node.
@@ -143,16 +144,13 @@ class StateEVRP(NamedTuple):
         trucks_locations = self.trucks_locations.clone()
         trailers_locations = self.trailers_locations.clone()
 
-        node_trucks = torch.zeros(size=self.node_trucks.shape)  # reset values
-        node_trailers = torch.zeros(size=self.node_trailers.shape)  # reset values
+        node_trucks = torch.zeros(size=self.node_trucks.shape, device=device)  # reset values
+        node_trailers = torch.zeros(size=self.node_trailers.shape, device=device)  # reset values
 
         # Update the battery level tensor: if charger is available at truck's node, set battery level to 1, else keep the same
-        charger_avail_trucks = avail_chargers.gather(
-            1, self.trucks_locations.to(torch.int64)
-        )  # (batch_size, num_trucks, 1)
         trucks_battery_levels = torch.where(
-            (self.trucks_battery_levels == 0) & (charger_avail_trucks == 1),
-            torch.tensor(1, device=self.trucks_locations.device),
+            self.trucks_battery_levels == 0,
+            torch.tensor(1, device=device, dtype=self.trucks_battery_levels.dtype),
             self.trucks_battery_levels,
         )
 
@@ -185,7 +183,7 @@ class StateEVRP(NamedTuple):
             selected_node[selected_trailer_mask]
             .unsqueeze(-1)
             .unsqueeze(-1)
-            .to(torch.float32),
+            .to(self.trailers_locations.dtype),
             self.trailers_locations[valid_trailer_ids, valid_trailer_indices],
         )
 
@@ -195,11 +193,11 @@ class StateEVRP(NamedTuple):
         )
         avail_chargers[valid_ids, truck_node_location] = torch.where(
             torch.logical_or(
-                self.num_chargers[valid_ids, truck_node_location] - 1 > 0,
+                (self.num_chargers[valid_ids, truck_node_location] - 1 > 0),
                 selected_trailer_mask[valid_ids].unsqueeze(-1),
             ),
-            1.0,
-            0.0,
+            torch.tensor(1.0, device=device),
+            torch.tensor(0.0, device=device),
         )
         node_trucks[
             self.ids.unsqueeze(-1).expand(trucks_locations.shape),
@@ -304,13 +302,14 @@ class StateEVRP(NamedTuple):
         # Mask current node (the cost of staying on the same node remains 0, so it is the best choice)
         # Mask the nodes that the truck cannot go to because of its battery limits
         graph_size = self.node_trailers.shape[1]
+        device = self.node_trailers.device
         cur_nodes = (
             self.trucks_locations[self.ids, selected_truck[self.ids]]
             .squeeze(-1)
             .to(torch.int64)
         )  # if truck is -1, this will give the last value of the tensor.
 
-        init_mask = torch.zeros(self.num_chargers.shape)
+        init_mask = torch.zeros(self.num_chargers.shape,  device=device)
 
         # mask finished batches
         condition = torch.all(
@@ -321,7 +320,7 @@ class StateEVRP(NamedTuple):
         #  Probably not moving maybe a good choice as well, but we need to add a penatly for that?
         #  PENALTY IS THE MAX, MIN OR MEAN DISTANCE + 0.1 ??
         # if batch is not yet done, then mask the current node
-        mask = torch.full_like(init_mask, False, dtype=torch.bool)
+        mask = torch.full_like(init_mask, False, dtype=torch.bool, device=device)
         mask[self.ids, cur_nodes] = True
 
         mask_distanced_nodes = (
