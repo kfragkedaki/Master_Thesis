@@ -4,12 +4,14 @@ channels:
 - pytorch
 dependencies:
 - python>=3.9
+- pandas
 - anaconda
 - tqdm
 - scipy
 - matplotlib
 - plotly
 - numpy
+- scikit-learn
 - black
 - flake8
 - pytest
