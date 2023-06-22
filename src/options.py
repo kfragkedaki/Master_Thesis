@@ -19,7 +19,7 @@ def get_options(args=None):
         help="The problem to solve tsp, cvrp or evrp, default 'tsp'",
     )
     parser.add_argument(
-        "--graph_size", type=int, default=4, help="The size of the problem graph"
+        "--graph_size", type=int, default=5, help="The size of the problem graph"
     )
     parser.add_argument(
         "--batch_size",
@@ -30,13 +30,13 @@ def get_options(args=None):
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=512 * 25,
+        default=512 * 250,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=1024 * 2,
+        default=10000,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(
@@ -93,7 +93,7 @@ def get_options(args=None):
         "--eval_only", action="store_true", help="Set this value to only evaluate model"
     )
     parser.add_argument(
-        "--n_epochs", type=int, default=5, help="The number of epochs to train"
+        "--n_epochs", type=int, default=60, help="The number of epochs to train"
     )
     parser.add_argument("--seed", type=int, default=1234, help="Random seed to use")
     parser.add_argument(
@@ -153,7 +153,7 @@ def get_options(args=None):
     parser.add_argument(
         "--num_trailers",
         type=int,
-        default=3,
+        default=4,
         help="The number of the trailers of the EVRP problem.",
     )
     # Misc
@@ -199,7 +199,7 @@ def get_options(args=None):
     parser.add_argument(
         "--display_graphs",
         type=int,
-        default=3,
+        default=None,
         help="The number of displayed graphs during evaluation. Default None.",
     )
 
@@ -225,7 +225,7 @@ def get_options(args=None):
 
     # Set the device
     use_cuda = torch.cuda.is_available() and not opts.no_cuda
-    use_mps = torch.backends.mps.is_available() and not opts.no_cuda and False
+    use_mps = torch.backends.mps.is_available() and not opts.no_cuda
 
     opts.device = torch.device("cuda:0" if use_cuda else "mps:0" if use_mps else "cpu")
     opts.dataParallel = (
