@@ -532,6 +532,8 @@ class GraphDecoderEVRP(GraphDecoder):
 
     def trailer_select(self, state, embeddings):
         batch_size, _, embedding_size = embeddings.size()
+        device = embeddings.device
+
         embeddings_extended = torch.cat((embeddings, state.node_trucks), 2)
         trailer_embeddings = embeddings_extended.gather(
             1,
@@ -565,7 +567,7 @@ class GraphDecoderEVRP(GraphDecoder):
 
         elif self.decode_type == "sampling":
             # if a batch has finished then do not pick a trailer
-            trailer = torch.full((batch_size,), -1)
+            trailer = torch.full((batch_size,), -1, device=device)
             trailer[~masking] = probs[~masking].multinomial(1).squeeze(1)
 
             while (
@@ -584,14 +586,13 @@ class GraphDecoderEVRP(GraphDecoder):
     def truck_select(self, state, embeddings, trailer):
         batch_size, _, embedding_size = embeddings.size()
         num_trucks = state.trucks_battery_levels.shape[1]
+        device = embeddings.device
 
         trailer_embeddings = []
         for i in range(batch_size):
             if trailer[i] == -1:
                 # No trailer for this batch, use a zeroed-out embedding
-                trailer_embeddings.append(
-                    torch.zeros(1, embedding_size).to(embeddings.device)
-                )
+                trailer_embeddings.append(torch.zeros(1, embedding_size).to(device))
             else:
                 selected_trailer_node = (
                     state.trailers_locations[i][trailer[i]].squeeze(-1).to(torch.int)
@@ -651,7 +652,7 @@ class GraphDecoderEVRP(GraphDecoder):
             ), "Decode greedy: infeasible action has maximum probability for truck"
 
         elif self.decode_type == "sampling":
-            truck = torch.full((batch_size,), -1)
+            truck = torch.full((batch_size,), -1, device=device)
             truck[~masking] = probs[~masking].multinomial(1).squeeze(1)
 
             while (
