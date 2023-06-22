@@ -2,12 +2,15 @@ from torch.utils.data import Dataset
 import torch
 import os
 import pickle
+import numpy as np
 from src.problems.evrp.state_evrp import StateEVRP
 from src.utils.beam_search import beam_search
 from src.utils.truck_naming import get_truck_names
 from src.graph.evrp_network import EVRPNetwork
 from src.graph.evrp_graph import EVRPGraph
 from src.utils.load_json import load_json, get_information_from_dict
+from generate_data import generate_evrp_data
+
 
 class EVRP(object):
     NAME = "evrp"
@@ -96,20 +99,30 @@ def make_instance(args):
         trailer_end_time,
     ) = args
     num_nodes = len(coords)
+
+    trucks_locations = torch.Tensor(np.array(trucks_locations))
+    trailers_locations = torch.Tensor(np.array(trailers_locations))
     node_trucks = torch.zeros(size=(num_nodes, 1))
     node_trucks[trucks_locations.to(torch.int)] = 1
 
     node_trailers = torch.zeros(size=(num_nodes, 1))
     node_trailers[trailers_locations.to(torch.int)] = 1
+
+    chargers = torch.Tensor(np.array(chargers)).unsqueeze(-1)
+
     return {
-        "coords": coords,
+        "coords": torch.Tensor(np.array(coords)),
         "num_chargers": chargers,
-        "trucks_locations": trucks_locations,
-        "trucks_battery_levels": trucks_battery_levels,
-        "trailers_locations": trailers_locations,
-        "trailers_destinations": trailers_destinations,
-        "trailers_start_time": trailer_start_time,
-        "trailers_end_time": trailer_end_time,
+        "trucks_locations": trucks_locations.unsqueeze(-1),
+        "trucks_battery_levels": torch.Tensor(
+            np.array(trucks_battery_levels)
+        ).unsqueeze(-1),
+        "trailers_locations": trailers_locations.unsqueeze(-1),
+        "trailers_destinations": torch.Tensor(
+            np.array(trailers_destinations)
+        ).unsqueeze(-1),
+        "trailers_start_time": torch.Tensor(np.array(trailer_start_time)).unsqueeze(-1),
+        "trailers_end_time": torch.Tensor(np.array(trailer_end_time)).unsqueeze(-1),
         "avail_chargers": torch.where(chargers > 0, 1.0, 0.0),
         "node_trucks": node_trucks,
         "node_trailers": node_trailers,
@@ -137,16 +150,12 @@ class EVRPDataset(Dataset):
             assert type_file == ".pkl" or type_file == ".json", "Wrong file type"
 
             if type_file == ".pkl":
-
                 with open(filename, "rb") as f:
                     data = pickle.load(f)
                     self.data = []
                     graphs = []
                     for args in data[offset : offset + num_samples]:
                         instance = make_instance(args)
-
-                        self.data.append(instance)
-
                         instance["num_nodes"] = len(instance["coords"])
                         instance["num_trucks"] = len(instance["trucks_locations"])
                         instance["num_trailers"] = len(instance["trailers_locations"])
@@ -164,14 +173,23 @@ class EVRPDataset(Dataset):
                 result = get_information_from_dict(data)
 
                 graph = [EVRPGraph(**result, data=data)]
-                self.sampler, self.data = make_instances(**result, num_samples=1, graph=graph)
-        else:
+                self.sampler, self.data = make_instances(
+                    **result, num_samples=1, graph=graph
+                )
+
+        elif kwargs["display_graphs"] is not None:
             assert (
                 len(get_truck_names(truck_names)) > num_trucks
             ), "The number of truck names does not match the number of trucks"
             self.sampler, self.data = make_instances(
                 num_samples, size, num_trucks, num_trailers, truck_names
             )
+        else:
+            evrp_dataset = generate_evrp_data(
+                num_samples, size, num_trailers, num_trucks
+            )
+            self.data = [make_instance(args) for args in evrp_dataset]
+            self.sampler = None
 
         self.size = len(self.data)
 
@@ -179,4 +197,7 @@ class EVRPDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx):
-        return self.data[idx], self.sampler.graphs[idx]
+        if self.sampler is not None:
+            return self.data[idx], self.sampler.graphs[idx]
+        else:
+            return self.data[idx], 0

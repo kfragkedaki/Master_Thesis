@@ -195,9 +195,9 @@ class EVRPNetwork:
             torch.Tensor: Number of available chargers of each node in shape
                 (num_graphs, num_nodes, 1)
         """
-        chargers = np.zeros(shape=(self.num_graphs, self.num_nodes, 1))
+        chargers = np.zeros(shape=(self.num_graphs, self.num_nodes))
         for graph_index, graph in enumerate(self.graphs):
-            chargers[graph_index] = graph._node_avail_chargers[:, None]
+            chargers[graph_index] = graph._node_avail_chargers
 
         return torch.FloatTensor(chargers)
 
@@ -210,10 +210,8 @@ class EVRPNetwork:
                 (num_graphs, num_trucks, 1)
         """
         state = {}
-        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trucks, 1))
-        state["battery_levels"] = torch.zeros(
-            size=(self.num_graphs, self.num_trucks, 1)
-        )
+        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trucks))
+        state["battery_levels"] = torch.zeros(size=(self.num_graphs, self.num_trucks))
 
         for graph_index, graph in enumerate(self.graphs):
             trucks = graph._node_trucks
@@ -225,8 +223,8 @@ class EVRPNetwork:
                         truck_index = get_truck_number(
                             truck=name, file=self.truck_names
                         )
-                        state["locations"][graph_index, truck_index, 0] = node_index
-                        state["battery_levels"][graph_index, truck_index, 0] = value[
+                        state["locations"][graph_index, truck_index] = node_index
+                        state["battery_levels"][graph_index, truck_index] = value[
                             "battery_level"
                         ]
 
@@ -241,12 +239,10 @@ class EVRPNetwork:
                 (num_graphs, num_trailers, 1)
         """
         state = {}
-        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
-        state["destinations"] = torch.zeros(
-            size=(self.num_graphs, self.num_trailers, 1)
-        )
-        state["start_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
-        state["end_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers, 1))
+        state["locations"] = torch.zeros(size=(self.num_graphs, self.num_trailers))
+        state["destinations"] = torch.zeros(size=(self.num_graphs, self.num_trailers))
+        state["start_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers))
+        state["end_time"] = torch.zeros(size=(self.num_graphs, self.num_trailers))
 
         for graph_index, graph in enumerate(self.graphs):
             trailers = graph._node_trailers
@@ -256,14 +252,14 @@ class EVRPNetwork:
                 if trailer_node is not None:
                     for name, value in trailer_node.items():
                         trailer_index = get_trailer_number(trailer=name)
-                        state["locations"][graph_index, trailer_index, 0] = node_index
-                        state["destinations"][graph_index, trailer_index, 0] = value[
+                        state["locations"][graph_index, trailer_index] = node_index
+                        state["destinations"][graph_index, trailer_index] = value[
                             "destination_node"
                         ]
-                        state["start_time"][graph_index, trailer_index, 0] = value[
+                        state["start_time"][graph_index, trailer_index] = value[
                             "start_time"
                         ]
-                        state["end_time"][graph_index, trailer_index, 0] = value[
+                        state["end_time"][graph_index, trailer_index] = value[
                             "end_time"
                         ]
 

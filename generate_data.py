@@ -26,19 +26,38 @@ def generate_vrp_data(dataset_size, vrp_size):
     )
 
 
+def _compute_coordinates(num_nodes):
+    def check_distance(new_point, points, r_threshold):
+        for point in points.values():
+            dist = 0
+            if point is not None:
+                dist = np.sqrt(np.sum(np.square(new_point - point)))
+            if dist > r_threshold:
+                return False
+        return True
+
+    coordinates = dict.fromkeys(range(num_nodes))
+    idx = 0
+    while any(value is None for value in coordinates.values()):
+        new_point = np.random.rand(2)
+        if check_distance(new_point, coordinates, r_threshold=0.6):
+            coordinates[idx] = new_point
+            idx += 1
+
+    return list(coordinates.values())
+
+
 def generate_evrp_data(dataset_size, graph_size, num_trailers, num_trucks):
-    coords = np.random.uniform(size=(dataset_size, graph_size, 2)).tolist()
+    coords = [_compute_coordinates(graph_size) for _ in range(dataset_size)]
     node_chargers = np.random.randint(
         low=1, high=10, size=(dataset_size, graph_size)
     ).tolist()
     trucks_locations = [
-        np.random.choice(graph_size, num_trucks, replace=False).tolist()
-        for _ in range(dataset_size)
+        np.random.choice(graph_size, num_trucks).tolist() for _ in range(dataset_size)
     ]
     trucks_battery_levels = np.ones(shape=(dataset_size, num_trucks)).tolist()
     trailers_locations = [
-        np.random.choice(graph_size, num_trailers, replace=False).tolist()
-        for _ in range(dataset_size)
+        np.random.choice(graph_size, num_trailers).tolist() for _ in range(dataset_size)
     ]
     destinations = [
         [
@@ -83,7 +102,7 @@ if __name__ == "__main__":
         help="Create datasets in data_dir/problem (default 'data')",
     )
     parser.add_argument(
-        "--name", type=str, default="new2", help="Name to identify dataset"
+        "--name", type=str, default="new", help="Name to identify dataset"
     )
     parser.add_argument(
         "--problem",
@@ -135,6 +154,8 @@ if __name__ == "__main__":
 
     if opts.problem == "all":
         problems = distributions_per_problem
+    else:
+        problems = {opts.problem: [None]}
 
     for problem, distributions in problems.items():
         for graph_size in opts.graph_sizes:

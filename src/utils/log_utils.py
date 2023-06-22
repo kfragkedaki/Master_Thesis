@@ -140,45 +140,46 @@ def log_values(
                 "critic_grad_norm_clipped", grad_norms_clipped[1], step
             )
 
-        # Log the weights for each encoder layer
-        model_ = get_inner_model(model)
-        for layer_idx in range(model_.n_encode_layers):
-            encoder_layer = model_.encoder.layers[layer_idx]
-            for name, param in encoder_layer.named_parameters():
-                tb_logger["writer"].add_histogram(
-                    f"Encoder Layer {layer_idx + 1}/{name}",
-                    param.clone().cpu().data.numpy(),
-                    epoch,
-                )
+        if opts.display_graphs is not None:
+            # Log the weights for each encoder layer
+            model_ = get_inner_model(model)
+            for layer_idx in range(model_.n_encode_layers):
+                encoder_layer = model_.encoder.layers[layer_idx]
+                for name, param in encoder_layer.named_parameters():
+                    tb_logger["writer"].add_histogram(
+                        f"Encoder Layer {layer_idx + 1}/{name}",
+                        param.clone().cpu().data.numpy(),
+                        epoch,
+                    )
 
-        # Log the weights of the model
-        for name, param in model_.named_parameters():
-            if "encoder" not in name:
-                tb_logger["writer"].add_histogram(
-                    f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
-                )
+            # Log the weights of the model
+            for name, param in model_.named_parameters():
+                if "encoder" not in name:
+                    tb_logger["writer"].add_histogram(
+                        f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
+                    )
 
-        encoder_distance = {
-            "input_distance": (
-                model_.encoder_data["input"][0, :, None, :]
-                - model_.encoder_data["input"][0, None, :, :]
-            ).norm(p=2, dim=-1),
-            "embedding_distance": (
-                model_.encoder_data["embeddings"][0, :, None, :]
-                - model_.encoder_data["embeddings"][0, None, :, :]
-            ).norm(p=2, dim=-1),
-        }
+            encoder_distance = {
+                "input_distance": (
+                    model_.encoder_data["input"][0, :, None, :]
+                    - model_.encoder_data["input"][0, None, :, :]
+                ).norm(p=2, dim=-1),
+                "embedding_distance": (
+                    model_.encoder_data["embeddings"][0, :, None, :]
+                    - model_.encoder_data["embeddings"][0, None, :, :]
+                ).norm(p=2, dim=-1),
+            }
 
-        # Compute cosine similarity between embeddings
-        # only the first instance in the batch_size
-        encoder_cosine = {
-            "input_cos": torch.from_numpy(
-                cosine_similarity(model_.encoder_data["input"][0].numpy())
-            ),
-            "embeddings_cos": torch.from_numpy(
-                cosine_similarity(model_.encoder_data["embeddings"][0].numpy())
-            ),
-        }
+            # Compute cosine similarity between embeddings
+            # only the first instance in the batch_size
+            encoder_cosine = {
+                "input_cos": torch.from_numpy(
+                    cosine_similarity(model_.encoder_data["input"][0].numpy())
+                ),
+                "embeddings_cos": torch.from_numpy(
+                    cosine_similarity(model_.encoder_data["embeddings"][0].numpy())
+                ),
+            }
 
-        plot_encoder_data(encoder_distance, tb_logger, epoch)
-        plot_attention_weights(model_, tb_logger, epoch)
+            plot_encoder_data(encoder_distance, tb_logger, epoch)
+            plot_attention_weights(model_, tb_logger, epoch)

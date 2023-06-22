@@ -87,13 +87,17 @@ class TSPDataset(Dataset):
                     torch.FloatTensor(row)
                     for row in (data[offset : offset + num_samples])
                 ]
-        else:
+        elif kwargs["display_graphs"] is not None:
             self.sampler = Network(
                 num_graphs=num_samples,
                 num_nodes=size,
                 num_depots=1,
             )
             self.data = self.sampler.get_graph_positions()
+        else:
+            self.data = [
+                torch.FloatTensor(size, 2).uniform_(0, 1) for i in range(num_samples)
+            ]
 
         self.size = len(self.data)
 

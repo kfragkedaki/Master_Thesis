@@ -55,6 +55,7 @@ def eval_dataset_mp(args):
         num_trucks=opts.num_trucks,
         num_trailers=opts.num_trailers,
         truck_names=opts.truck_names,
+        display_graphs=opts.display_graphs,
     )
     device = torch.device("cuda:{}".format(i))
 
@@ -92,6 +93,7 @@ def eval_dataset(dataset_path, width, softmax_temp, opts):
             num_trucks=opts.num_trucks,
             num_trailers=opts.num_trailers,
             truck_names=opts.truck_names,
+            display_graphs=opts.display_graphs,
         )
         results = _eval_dataset(model, dataset, width, softmax_temp, opts, device)
 

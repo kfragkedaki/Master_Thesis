@@ -103,7 +103,7 @@ class AttentionEVRPModel(nn.Module):
         self.epoch = epoch
         self.type = type
 
-        if len(graphs) > 0:
+        if self.opts.display_graphs:
             self.graphs = EVRPNetwork(
                 num_graphs=graphs[0].num_nodes,
                 num_nodes=graphs[0].num_nodes,
@@ -119,7 +119,7 @@ class AttentionEVRPModel(nn.Module):
         if (
             self.checkpoint_encoder and self.training
         ):  # Only checkpoint if we need gradients
-            embeddings = checkpoint(self._init_embed(self.encoder), input)
+            embeddings = checkpoint(self.encoder, self._init_embed(input))
         else:
             embeddings = self.encoder(self._init_embed(input))
 

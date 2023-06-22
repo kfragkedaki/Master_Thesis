@@ -101,6 +101,7 @@ class Agent:
             num_trucks=self.opts.num_trucks,
             num_trailers=self.opts.num_trailers,
             truck_names=self.opts.truck_names,
+            display_graphs=self.opts.display_graphs,
         )
 
         if self.opts.resume:
