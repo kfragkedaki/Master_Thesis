@@ -142,26 +142,27 @@ class EVRPGraph:
 
         return coordinates
 
-    def get_trailer_labels(self, data):
+    def get_trailer_labels(self, data, colors):
         node_trailers = {}
+        node_colors = {}
         for node_id, trailers_data in data.items():
             if trailers_data is not None:
                 # origin
                 if node_id not in node_trailers:
                     node_trailers[node_id] = ""
+
                 node_trailers[node_id] += str(list(trailers_data.keys())) + "\n"
 
                 for trailer_id, trailer_data in trailers_data.items():
                     destination_node = trailer_data["destination_node"]
 
                     # destination
-                    if destination_node not in node_trailers:
-                        node_trailers[destination_node] = ""
-                    node_trailers[
-                        destination_node
-                    ] += f"Destination Node of {trailer_id} \n"
+                    if destination_node not in node_colors:
+                        node_colors[destination_node] = []
 
-        return node_trailers
+                    node_colors[destination_node].append(colors[trailer_id])
+
+        return node_trailers, node_colors
 
     def bezier_control_point(self, pos_source, pos_target, offset):
         x1, y1 = pos_source
@@ -192,6 +193,36 @@ class EVRPGraph:
 
         plt.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.3, 1))
 
+    def draw_graph_with_multicolor_circles(self, pos, ax, node_colors_dict):
+        # Draw concentric circles around the nodes
+        for node, colors in node_colors_dict.items():
+            x, y = pos[node]
+            for i, color in enumerate(colors):
+                circle = plt.Circle(
+                    (x, y),
+                    radius=(0.15 * (i / 10 + 0.5)),
+                    edgecolor=color,
+                    facecolor="none",
+                )
+                ax.add_artist(circle)
+
+    def normalize_positions(self, pos):
+        x_values, y_values = zip(*pos.values())
+
+        x_min = min(x_values)
+        x_max = max(x_values)
+        y_min = min(y_values)
+        y_max = max(y_values)
+
+        pos_normalized = {}
+        for node, (x, y) in pos.items():
+            pos_normalized[node] = (
+                (x - x_min) / (x_max - x_min),
+                (y - y_min) / (y_max - y_min),
+            )
+
+        return pos_normalized
+
     def draw(self, ax, with_labels=True):
         """
         Draws the graph as a matplotlib plot.
@@ -200,6 +231,8 @@ class EVRPGraph:
 
         # draw nodes according to color and position attribute
         pos = nx.get_node_attributes(graph_copy, "coordinates")
+        pos = self.normalize_positions(pos)
+
         node_colors = nx.get_node_attributes(graph_copy, "node_color").values()
         nx.draw_networkx_nodes(
             graph_copy,
@@ -247,8 +280,8 @@ class EVRPGraph:
                 graph_copy, pos=pos, labels=node_num_chargers, ax=ax, font_size=6
             )
             # trucks
-            label_offset = np.array([0, 0.09])
-            truck_label_pos = {k: (v - 0.6 * label_offset) for k, v in pos.items()}
+            label_offset = np.array([0, 0.37])
+            truck_label_pos = {k: (v - 0.4 * label_offset) for k, v in pos.items()}
 
             node_trucks_data = nx.get_node_attributes(graph_copy, "trucks")
             node_trucks_labels = {
@@ -270,7 +303,9 @@ class EVRPGraph:
             trailer_label_pos = {k: (v - 0.2 * label_offset) for k, v in pos.items()}
 
             node_trailers_data = nx.get_node_attributes(graph_copy, "trailers")
-            node_trailers_labels = self.get_trailer_labels(node_trailers_data)
+            node_trailers_labels, node_colors_dict = self.get_trailer_labels(
+                node_trailers_data, color
+            )
 
             nx.draw_networkx_labels(
                 graph_copy,
@@ -279,6 +314,8 @@ class EVRPGraph:
                 ax=ax,
                 font_size=8,
             )
+
+            self.draw_graph_with_multicolor_circles(pos, ax, node_colors_dict)
 
             # draw edges
             for edge in graph_copy.edges(data=True, keys=True):
@@ -566,11 +603,13 @@ if __name__ == "__main__":
         G.clear()
         edge = G.visit_edge([edge])
         G.update_attributes(edge)
-        plt.show(bbox_inches="tight")
+        plt.axis("equal")
+        plt.show()
 
     fig, ax = plt.subplots()
     G.draw(ax=ax, with_labels=True)
-    plt.show(bbox_inches="tight")
+    plt.axis("equal")
+    plt.show()
 
     print(G._edges)
     print(G._nodes)
