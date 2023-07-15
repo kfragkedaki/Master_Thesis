@@ -330,6 +330,7 @@ class GraphDecoderEVRP(GraphDecoder):
         num_trucks: int = 2,
         feed_forward_hidden: int = 512,
         features: any = (),
+        r_threshold: int = None,
     ):
         """
         Args:
@@ -354,6 +355,7 @@ class GraphDecoderEVRP(GraphDecoder):
             W_placeholder=W_placeholder,
         )
         self.features = features
+        self.r_threshold = r_threshold
 
         # trailer decoder_extraction
         self.FF_trailer = (
@@ -431,7 +433,12 @@ class GraphDecoderEVRP(GraphDecoder):
         )
 
         log_p, mask = self._get_log_p(
-            fixed_attention, state, selected_trailer, selected_truck, normalize
+            fixed_attention,
+            state,
+            selected_trailer,
+            selected_truck,
+            self.r_threshold,
+            normalize,
         )
         # Select the indices of the next nodes in the sequences, result (batch_size) long
         selected_node = self._select_node(
@@ -444,7 +451,7 @@ class GraphDecoderEVRP(GraphDecoder):
             log_p[:, 0, :],
         )
 
-    def _get_log_p(self, fixed, state, trailer, truck, normalize=True):
+    def _get_log_p(self, fixed, state, trailer, truck, r_threshold, normalize=True):
         query = fixed.context_node_projected + self.project_step_context(
             self._get_parallel_step_context(
                 fixed.node_embeddings, state, trailer, truck
@@ -454,7 +461,9 @@ class GraphDecoderEVRP(GraphDecoder):
         # Compute keys and values for the nodes
         glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
 
-        node_masking = state.get_mask(truck)  # [batch_size, 1, graph_size]
+        node_masking = state.get_mask(
+            truck, r_threshold=r_threshold
+        )  # [batch_size, 1, graph_size]
 
         # Compute logits (unnormalized log_p)  log_p:[batch_size, num_veh, graph_size], glimpse:[batch_size, num_veh, embed_dim]
         log_p, glimpse = self._get_attention_glimpse(

@@ -174,6 +174,7 @@ class RolloutBaseline(Baseline):
                 num_trailers=self.opts.num_trailers,
                 truck_names=self.opts.truck_names,
                 display_graphs=self.opts.display_graphs,
+                r_threshold=self.opts.battery_limit,
             )
         else:
             self.dataset = dataset

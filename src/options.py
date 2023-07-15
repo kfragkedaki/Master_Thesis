@@ -30,13 +30,13 @@ def get_options(args=None):
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=512 * 250,
+        default=512 * 25,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=10000,
+        default=1000,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(
@@ -93,7 +93,7 @@ def get_options(args=None):
         "--eval_only", action="store_true", help="Set this value to only evaluate model"
     )
     parser.add_argument(
-        "--n_epochs", type=int, default=60, help="The number of epochs to train"
+        "--n_epochs", type=int, default=150, help="The number of epochs to train"
     )
     parser.add_argument("--seed", type=int, default=1234, help="Random seed to use")
     parser.add_argument(
@@ -201,6 +201,12 @@ def get_options(args=None):
         type=int,
         default=None,
         help="The number of displayed graphs during evaluation. Default None.",
+    )
+    parser.add_argument(
+        "--battery_limit",
+        type=int,
+        default=0.6,
+        help="The distance an electric vehicle can drive without recharging.",
     )
 
     opts = parser.parse_args(args)

@@ -26,29 +26,54 @@ def generate_vrp_data(dataset_size, vrp_size):
     )
 
 
-def _compute_coordinates(num_nodes):
-    def check_distance(new_point, points, r_threshold):
-        for point in points.values():
-            dist = 0
-            if point is not None:
-                dist = np.sqrt(np.sum(np.square(new_point - point)))
-            if dist > r_threshold:
-                return False
-        return True
+def generate_random_point(center, radius, other_nodes, num_samples=1000, max_tries=20):
+    for _ in range(max_tries):
+        # Generate num_samples random distances and directions
+        radii = 0.1 * np.random.rand(num_samples) + radius - 0.1
+        thetas = 2 * np.pi * np.random.rand(num_samples)
 
+        # Convert polar to cartesian
+        dx = radii * np.cos(thetas)
+        dy = radii * np.sin(thetas)
+
+        # Generate potential new points
+        potential_points = np.column_stack([center[0] + dx, center[1] + dy])
+
+        # Check all points at once
+        for point, radius in zip(potential_points, radii):
+            if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                if (
+                    all(
+                        np.linalg.norm(point - node) >= radius
+                        for node in other_nodes
+                        if node is not None
+                    )
+                    and np.linalg.norm(point - center) <= radius
+                ):
+                    return point
+
+    return generate_random_point(center, radius, other_nodes)
+
+
+def _compute_coordinates(num_nodes, r_threshold: float):
     coordinates = dict.fromkeys(range(num_nodes))
-    idx = 0
-    while any(value is None for value in coordinates.values()):
-        new_point = np.random.rand(2)
-        if check_distance(new_point, coordinates, r_threshold=0.6):
-            coordinates[idx] = new_point
-            idx += 1
+    new_point = np.random.rand(2)
+    coordinates[0] = new_point
+
+    for node in range(1, num_nodes):
+        choices = range(node)
+        center_idx = np.random.choice(choices)
+        center = coordinates[center_idx]
+        new_point = generate_random_point(center, r_threshold, coordinates.values())
+        coordinates[node] = new_point
 
     return list(coordinates.values())
 
 
-def generate_evrp_data(dataset_size, graph_size, num_trailers, num_trucks):
-    coords = [_compute_coordinates(graph_size) for _ in range(dataset_size)]
+def generate_evrp_data(dataset_size, graph_size, num_trailers, num_trucks, r_threshold):
+    coords = [
+        _compute_coordinates(graph_size, r_threshold) for _ in range(dataset_size)
+    ]
     node_chargers = np.random.randint(
         low=1, high=10, size=(dataset_size, graph_size)
     ).tolist()
@@ -124,7 +149,7 @@ if __name__ == "__main__":
         "--graph_sizes",
         type=int,
         nargs="+",
-        default=[4, 20],
+        default=[4, 10],
         help="Sizes of problem instances (default 20, 50, 100)",
     )
     parser.add_argument(
@@ -136,6 +161,12 @@ if __name__ == "__main__":
         nargs="+",
         default=3,
         help="Size of the deliverables",
+    )
+    parser.add_argument(
+        "--battery_limit",
+        type=int,
+        default=[0.6, 0.1],
+        help="The distance an electric vehicle can drive without recharging.",
     )
     parser.add_argument("-f", action="store_true", help="Set true to overwrite")
     parser.add_argument("--seed", type=int, default=1234, help="Random seed")
@@ -158,7 +189,7 @@ if __name__ == "__main__":
         problems = {opts.problem: [None]}
 
     for problem, distributions in problems.items():
-        for graph_size in opts.graph_sizes:
+        for idx, graph_size in enumerate(opts.graph_sizes):
             datadir = os.path.join(opts.data_dir, problem)
             os.makedirs(datadir, exist_ok=True)
 
@@ -183,7 +214,11 @@ if __name__ == "__main__":
                 dataset = generate_vrp_data(opts.dataset_size, graph_size)
             elif problem == "evrp":
                 dataset = generate_evrp_data(
-                    opts.dataset_size, graph_size, opts.num_trailers, opts.num_trucks
+                    opts.dataset_size,
+                    graph_size,
+                    opts.num_trailers,
+                    opts.num_trucks,
+                    opts.battery_limit[idx],
                 )
             else:
                 assert False, "Unknown problem: {}".format(problem)

@@ -17,6 +17,7 @@ class EVRPNetwork:
         truck_names: str = None,
         plot_attributes: bool = True,
         graphs: List[EVRPGraph] = None,
+        r_threshold: float = 0.6,
     ) -> List[EVRPGraph]:
         """
         Creates num_graphs random generated fully connected
@@ -51,6 +52,7 @@ class EVRPNetwork:
                         num_trucks=num_trucks,
                         truck_names=truck_names,
                         plot_attributes=plot_attributes,
+                        r_threshold=r_threshold,
                     )
                 )
         else:
@@ -115,10 +117,14 @@ class EVRPNetwork:
         num_rows = np.ceil(len(graph_idxs) / num_columns).astype(int)
 
         # plot each graph in a 3 x num_rows grid
-        fig = plt.figure(figsize=(5 * num_columns, 5 * num_rows))
+        fig = plt.figure(figsize=(4 * num_columns, 4 * num_rows))
 
         for n, graph_idx in enumerate(graph_idxs):
             ax = plt.subplot(num_rows, num_columns, n + 1)
+
+            plt.axis("equal")
+            ax.set_xlim([-0.7, 1.3])
+            ax.set_ylim([-0.7, 1.3])
 
             if with_labels and n == len(graph_idxs) - 1:
                 legend = with_labels
@@ -138,10 +144,10 @@ class EVRPNetwork:
                     transform=plt.gca().transAxes,
                 )
 
-        # plt.show(bbox_inches="tight")
         time = selected[-1] if len(selected) > 0 else 0
+
         if file is None:
-            plt.show()
+            plt.show(bbox_inches="tight")
         else:
             plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
 
@@ -271,8 +277,6 @@ class EVRPNetwork:
 
 
 if __name__ == "__main__":
-    fig, ax = plt.subplots()
     G = EVRPNetwork(num_graphs=3, num_nodes=4, num_trailers=3, num_trucks=2)
 
     G.draw(graph_idxs=range(3), with_labels=True)
-    plt.show(bbox_inches="tight")

@@ -130,6 +130,7 @@ def train_epoch(
             num_trailers=opts.num_trailers,
             truck_names=opts.truck_names,
             display_graphs=opts.display_graphs,
+            r_threshold=opts.battery_limit,
         )
     )
     training_dataloader = DataLoader(

@@ -53,7 +53,14 @@ class EVRP(object):
 
 
 def make_instances(
-    num_samples, num_nodes, num_trucks, num_trailers, truck_names, graph=None, *args
+    num_samples,
+    num_nodes,
+    num_trucks,
+    num_trailers,
+    truck_names,
+    r_threshold,
+    graph=None,
+    *args
 ):
     sampler = EVRPNetwork(
         num_graphs=num_samples,
@@ -62,6 +69,7 @@ def make_instances(
         num_trailers=num_trailers,
         truck_names=truck_names,
         graphs=graph,
+        r_threshold=r_threshold,
     )
 
     coords = sampler.get_graph_positions()
@@ -166,7 +174,9 @@ class EVRPDataset(Dataset):
                         ), "The number of truck names does not match the number of trucks"
                         graphs.append(EVRPGraph(**instance))
 
-                    self.sampler, self.data = make_instances(graphs=graphs)
+                    self.sampler, self.data = make_instances(
+                        graphs=graphs, r_threshold=kwargs["r_threshold"]
+                    )
             else:
                 data = load_json(filename)
                 assert data is not None, "Wrong data type"
@@ -174,7 +184,10 @@ class EVRPDataset(Dataset):
 
                 graph = [EVRPGraph(**result, data=data)]
                 self.sampler, self.data = make_instances(
-                    **result, num_samples=1, graph=graph
+                    **result,
+                    num_samples=1,
+                    graph=graph,
+                    r_threshold=kwargs["r_threshold"]
                 )
 
         elif kwargs["display_graphs"] is not None:
@@ -182,11 +195,20 @@ class EVRPDataset(Dataset):
                 len(get_truck_names(truck_names)) > num_trucks
             ), "The number of truck names does not match the number of trucks"
             self.sampler, self.data = make_instances(
-                num_samples, size, num_trucks, num_trailers, truck_names
+                num_samples,
+                size,
+                num_trucks,
+                num_trailers,
+                truck_names,
+                r_threshold=kwargs["r_threshold"],
             )
         else:
             evrp_dataset = generate_evrp_data(
-                num_samples, size, num_trailers, num_trucks
+                num_samples,
+                size,
+                num_trailers,
+                num_trucks,
+                r_threshold=kwargs["r_threshold"],
             )
             self.data = [make_instance(args) for args in evrp_dataset]
             self.sampler = None

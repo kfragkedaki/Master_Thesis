@@ -53,6 +53,7 @@ class AttentionEVRPModel(nn.Module):
         self.decode_type = None
         self.temp = 1.0
         self.opts = opts
+        self.r_threshold = opts.battery_limit
 
         self.problem = problem  # env
         self.n_heads = n_heads
@@ -79,6 +80,7 @@ class AttentionEVRPModel(nn.Module):
             num_trailers=opts.num_trailers,
             num_trucks=opts.num_trucks,
             features=self.features,
+            r_threshold=opts.battery_limit,
         )
 
     def set_decode_type(self, decode_type, temp=None):
@@ -112,6 +114,7 @@ class AttentionEVRPModel(nn.Module):
                 truck_names=graphs[0].truck_names,
                 plot_attributes=True,
                 graphs=graphs,
+                r_threshold=self.r_threshold,
             )
         else:
             self.graphs = None
@@ -179,7 +182,7 @@ class AttentionEVRPModel(nn.Module):
             i += 1
 
         cost = torch.where(
-            state.force_stop == 1, state.lengths.sum(1) * 5, state.lengths.sum(1)
+            state.force_stop == 1, state.lengths.sum(1) * 2, state.lengths.sum(1)
         )  # TODO test other options *1.5?
 
         # Collected lists, return Tensor

@@ -1,6 +1,6 @@
 import networkx as nx
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
+from matplotlib.patches import FancyArrowPatch, Circle
 import numpy as np
 from src.utils.load_json import get_information_from_dict
 from src.utils.truck_naming import get_truck_names
@@ -19,6 +19,7 @@ class EVRPGraph:
         truck_names: str = None,
         plot_attributes: bool = True,
         data: dict() = None,
+        r_threshold: float = 0.6,
         **kwargs,
     ):
         """
@@ -33,6 +34,7 @@ class EVRPGraph:
         self.num_trailers = num_trailers
         self.truck_names = truck_names
         self.plot_attributes = plot_attributes
+        self.r_threshold = r_threshold
 
         # generate graph and set node position
         self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
@@ -66,7 +68,7 @@ class EVRPGraph:
         # Node Attributes
         # If data is not provided, generate it
         if coords is None:
-            coords = self._compute_coordinates()
+            coords = self._compute_coordinates(r_threshold=self.r_threshold)
         if num_chargers is None:
             num_chargers = dict(
                 enumerate(np.random.randint(low=1, high=5, size=self.num_nodes))
@@ -122,23 +124,49 @@ class EVRPGraph:
                 "battery_level": trucks_battery_levels
             }
 
-    def _compute_coordinates(self):
-        def check_distance(new_point, points, r_threshold):
-            for point in points.values():
-                dist = 0
-                if point is not None:
-                    dist = np.sqrt(np.sum(np.square(new_point - point)))
-                if dist > r_threshold:
-                    return False
-            return True
+    def generate_random_point(
+        self, center, radius, other_nodes, num_samples=1000, max_tries=20
+    ):
+        for _ in range(max_tries):
+            # Generate num_samples random distances and directions
+            radii = 0.1 * np.random.rand(num_samples) + radius - 0.1
+            thetas = 2 * np.pi * np.random.rand(num_samples)
 
+            # Convert polar to cartesian
+            dx = radii * np.cos(thetas)
+            dy = radii * np.sin(thetas)
+
+            # Generate potential new points
+            potential_points = np.column_stack([center[0] + dx, center[1] + dy])
+
+            # Check all points at once
+            for point, radius in zip(potential_points, radii):
+                if 0 <= point[0] <= 1 and 0 <= point[1] <= 1:
+                    if (
+                        all(
+                            np.linalg.norm(point - node) >= radius
+                            for node in other_nodes
+                            if node is not None
+                        )
+                        and np.linalg.norm(point - center) <= radius
+                    ):
+                        return point
+
+        return self.generate_random_point(center, radius, other_nodes)
+
+    def _compute_coordinates(self, r_threshold: float):
         coordinates = dict.fromkeys(range(self.num_nodes))
-        idx = 0
-        while any(value is None for value in coordinates.values()):
-            new_point = np.random.rand(2)
-            if check_distance(new_point, coordinates, r_threshold=0.6):
-                coordinates[idx] = new_point
-                idx += 1
+        new_point = np.random.rand(2)
+        coordinates[0] = new_point
+
+        for node in range(1, self.num_nodes):
+            choices = range(node)
+            center_idx = np.random.choice(choices)
+            center = coordinates[center_idx]
+            new_point = self.generate_random_point(
+                center, r_threshold, coordinates.values()
+            )
+            coordinates[node] = new_point
 
         return coordinates
 
@@ -194,13 +222,16 @@ class EVRPGraph:
         plt.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.3, 1))
 
     def draw_graph_with_multicolor_circles(self, pos, ax, node_colors_dict):
+        radius = 0.15
+
         # Draw concentric circles around the nodes
         for node, colors in node_colors_dict.items():
-            x, y = pos[node]
+            center = pos[node]
+
             for i, color in enumerate(colors):
-                circle = plt.Circle(
-                    (x, y),
-                    radius=(0.15 * (i / 10 + 0.5)),
+                circle = Circle(
+                    center,
+                    radius=(radius * (i / 10 + 0.5)),
                     edgecolor=color,
                     facecolor="none",
                 )
@@ -231,7 +262,6 @@ class EVRPGraph:
 
         # draw nodes according to color and position attribute
         pos = nx.get_node_attributes(graph_copy, "coordinates")
-        pos = self.normalize_positions(pos)
 
         node_colors = nx.get_node_attributes(graph_copy, "node_color").values()
         nx.draw_networkx_nodes(
@@ -276,6 +306,7 @@ class EVRPGraph:
                     node_num_chargers.items(), node_available_chargers.values()
                 )
             }
+
             nx.draw_networkx_labels(
                 graph_copy, pos=pos, labels=node_num_chargers, ax=ax, font_size=6
             )
@@ -337,9 +368,9 @@ class EVRPGraph:
                     pos_target = pos[v]
 
                     if key % 2 == 0:
-                        offset = 0.1
+                        offset = 0.05
                     else:
-                        offset = -0.1
+                        offset = -0.05
 
                     x_control, y_control = self.bezier_control_point(
                         pos_source, pos_target, offset
@@ -381,6 +412,7 @@ class EVRPGraph:
             trailer (src): Trailer id of the edge
             timestamp (src): Timestamp id of the edge
         """
+
         for source_node, target_node, truck, trailer, timestamp in data:
             source_node = int(source_node)
             target_node = int(target_node)
@@ -413,7 +445,7 @@ class EVRPGraph:
                 not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
             ), f"The truck is not in the source node, {truck_id}, {trucks}"
 
-            self.get_neighbors(source_node)
+            self.get_neighbors(source_node, self.r_threshold)
             self.graph.add_edges_from(
                 [
                     (
@@ -535,7 +567,7 @@ class EVRPGraph:
 
         return np.linalg.norm(node_one_pos - node_two_pos)
 
-    def get_neighbors(self, cur_node, r_threshold=0.6) -> np.ndarray:
+    def get_neighbors(self, cur_node, r_threshold) -> np.ndarray:
         nns = []
         for node in self.graph.nodes():
             if node != cur_node and self.euclid_distance(cur_node, node) <= r_threshold:
@@ -590,11 +622,11 @@ if __name__ == "__main__":
         truck_names=result["truck_names"],
         plot_attributes=True,
         data=EXAMPLE_GRAPH,
+        r_threshold=0.6,
     )
+
     # add edges that where visited
     edges = [(1, 0, 0, None, 1), (2, 0, 1, None, 2), (0, 3, 0, 2, 3)]
-
-    print(G._nodes)
 
     for edge in edges:
         fig, ax = plt.subplots()
@@ -603,12 +635,17 @@ if __name__ == "__main__":
         G.clear()
         edge = G.visit_edge([edge])
         G.update_attributes(edge)
+
         plt.axis("equal")
+        ax.set_xlim([-0.7, 1.3])
+        ax.set_ylim([-0.7, 1.3])
         plt.show()
 
     fig, ax = plt.subplots()
     G.draw(ax=ax, with_labels=True)
     plt.axis("equal")
+    ax.set_xlim([-0.7, 1.3])
+    ax.set_ylim([-0.7, 1.3])
     plt.show()
 
     print(G._edges)
