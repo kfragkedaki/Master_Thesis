@@ -39,6 +39,7 @@ def run(config: dict()):
 if __name__ == "__main__":
     N_ITER = 100
     ray.init(num_cpus=4)
+
     searcher = HyperOptSearch(
         space=config, metric="loss", mode="min", n_initial_points=int(N_ITER / 10)
     )
