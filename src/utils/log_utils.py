@@ -128,7 +128,7 @@ def log_values(
         tb_logger["logger"].log_value("avg_cost", avg_cost, step)
 
         tb_logger["logger"].log_value("actor_loss", reinforce_loss.item(), step)
-        tb_logger["logger"].log_value("nll", -log_likelihood.mean().item(), step)
+        tb_logger["logger"].log_value("negative_log_likelihood", -log_likelihood.mean().item(), step)
 
         tb_logger["logger"].log_value("grad_norm", grad_norms[0], step)
         tb_logger["logger"].log_value("grad_norm_clipped", grad_norms_clipped[0], step)
@@ -170,16 +170,22 @@ def log_values(
                 ).norm(p=2, dim=-1),
             }
 
-            # Compute cosine similarity between embeddings
-            # only the first instance in the batch_size
-            encoder_cosine = {
-                "input_cos": torch.from_numpy(
-                    cosine_similarity(model_.encoder_data["input"][0].numpy())
-                ),
-                "embeddings_cos": torch.from_numpy(
-                    cosine_similarity(model_.encoder_data["embeddings"][0].numpy())
-                ),
-            }
-
             plot_encoder_data(encoder_distance, tb_logger, epoch)
             plot_attention_weights(model_, tb_logger, epoch)
+
+    if opts.hyperparameter_tuning:
+        tb_logger["ray"].add_scalar("Average Cost", avg_cost, epoch)
+        tb_logger["ray"].add_scalar("Actor Loss", reinforce_loss.item(), epoch)
+
+        tb_logger["ray"].add_scalar("Grad Norm", grad_norms[0], epoch)
+        tb_logger["ray"].add_scalar("Grad Norm Clipped", grad_norms_clipped[0], epoch)
+
+        model_ = get_inner_model(model)
+        for name, param in model_.named_parameters():
+            print("named_parameters ", f"{name}")
+
+        # Log the weights of the model
+        for name, param in model_.named_parameters():
+            tb_logger["ray"].add_histogram(
+                f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
+            )

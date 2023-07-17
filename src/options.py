@@ -51,7 +51,7 @@ def get_options(args=None):
     parser.add_argument(
         "--hidden_dim",
         type=int,
-        default=128,
+        default=512,
         help="Dimension of hidden layers in Enc/Dec",
     )
     parser.add_argument(
@@ -72,6 +72,11 @@ def get_options(args=None):
         default="batch",
         help="Normalization type, 'batch' (default) or 'instance'",
     )
+    parser.add_argument(
+        "--optimizer_class",
+        default="Adam",
+        help="Optimizer class, 'Adam' (default) or 'NAdam' or 'Adamax'",
+    )
 
     # Training
     parser.add_argument(
@@ -79,12 +84,6 @@ def get_options(args=None):
         type=float,
         default=1e-4,
         help="Set the learning rate for the actor network",
-    )
-    parser.add_argument(
-        "--lr_critic",
-        type=float,
-        default=1e-4,
-        help="Set the learning rate for the critic network",
     )
     parser.add_argument(
         "--lr_decay", type=float, default=1.0, help="Learning rate decay per epoch"
@@ -208,11 +207,30 @@ def get_options(args=None):
         default=0.6,
         help="The distance an electric vehicle can drive without recharging.",
     )
+    parser.add_argument(
+        "--hyperparameter_tuning",
+        type=bool,
+        default=False,
+        help="Use of Ray for hyperparameter tuning",
+    )
+    parser.add_argument(
+        "--early_stopping_patience",
+        type=int,
+        default=5,
+        help="Use of Ray for hyperparameter tuning",
+    )
+    parser.add_argument(
+        "--early_stopping_delta",
+        type=float,
+        default=5.0,
+        help="Use of Ray for hyperparameter tuning",
+    )
 
     opts = parser.parse_args(args)
     opts.run_name = "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
+    path = os.path.dirname(os.path.abspath(__file__))
     opts.save_dir = os.path.join(
-        opts.output_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name
+        os.path.dirname(path), opts.output_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name
     )
 
     if opts.bl_warmup_epochs is None:
@@ -220,10 +238,6 @@ def get_options(args=None):
 
     # Configure outputs dir
     os.makedirs(opts.save_dir)
-
-    with open(opts.save_dir + "/results", "w+", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Model", "Seed", "Mean Distance"])
 
     # Save arguments so exact configuration can always be found
     with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
