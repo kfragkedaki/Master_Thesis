@@ -230,7 +230,10 @@ def get_options(args=None):
     opts.run_name = "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
     path = os.path.dirname(os.path.abspath(__file__))
     opts.save_dir = os.path.join(
-        os.path.dirname(path), opts.output_dir, "{}_{}".format(opts.problem, opts.graph_size), opts.run_name
+        os.path.dirname(path),
+        opts.output_dir,
+        "{}_{}".format(opts.problem, opts.graph_size),
+        opts.run_name,
     )
 
     if opts.bl_warmup_epochs is None:

@@ -128,7 +128,9 @@ def log_values(
         tb_logger["logger"].log_value("avg_cost", avg_cost, step)
 
         tb_logger["logger"].log_value("actor_loss", reinforce_loss.item(), step)
-        tb_logger["logger"].log_value("negative_log_likelihood", -log_likelihood.mean().item(), step)
+        tb_logger["logger"].log_value(
+            "negative_log_likelihood", -log_likelihood.mean().item(), step
+        )
 
         tb_logger["logger"].log_value("grad_norm", grad_norms[0], step)
         tb_logger["logger"].log_value("grad_norm_clipped", grad_norms_clipped[0], step)

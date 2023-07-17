@@ -3,7 +3,13 @@ import os
 import torch
 
 from src.agents.train import train_epoch, validate
-from src.utils import torch_load_cpu, get_baseline_model, load_attention_model, load_optimizers, EarlyStopping
+from src.utils import (
+    torch_load_cpu,
+    get_baseline_model,
+    load_attention_model,
+    load_optimizers,
+    EarlyStopping,
+)
 from src.utils.hyperparameter_config import config
 
 from tensorboard_logger import Logger as TbLogger
@@ -77,11 +83,14 @@ class Agent:
             "writer": None
             if opts.no_tensorboard
             else SummaryWriter(log_dir=f"{opts.save_dir}/plots"),
-            "ray": None if not opts.hyperparameter_tuning
+            "ray": None
+            if not opts.hyperparameter_tuning
             else SummaryWriter(log_dir=f"{opts.save_dir}/{session.get_trial_id()}"),
         }
 
-        self.early_stopping = EarlyStopping(patience=opts.early_stopping_patience, delta=opts.early_stopping_delta)
+        self.early_stopping = EarlyStopping(
+            patience=opts.early_stopping_patience, delta=opts.early_stopping_delta
+        )
 
     def train(
         self,
@@ -141,15 +150,20 @@ class Agent:
                     val_dataset,
                     self.env,
                     self.tb_logger,
-                    self.opts
+                    self.opts,
                 )
 
                 if self.early_stopping(loss):
-                    print("Early Stopping")
+                    print(f"Early Stopping, epoch {epoch}")
                     break
 
             if self.opts.hyperparameter_tuning:
-                self.tb_logger["ray"].add_hparams(hparam_dict={k: v for k, v in vars(self.opts).items() if k in config.keys()}, metric_dict={"loss": loss},
-                                   run_name=f"{self.opts.save_dir}/{self.session.get_trial_id()}")
+                self.tb_logger["ray"].add_hparams(
+                    hparam_dict={
+                        k: v for k, v in vars(self.opts).items() if k in config.keys()
+                    },
+                    metric_dict={"loss": loss},
+                    run_name=f"{self.opts.save_dir}/{self.session.get_trial_id()}",
+                )
                 self.tb_logger["ray"].close()
                 torch.save(model, self.session.get_trial_dir() + "/model.pt")

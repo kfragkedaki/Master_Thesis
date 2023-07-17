@@ -18,9 +18,9 @@ from ray.air import session
 def run(config: dict()):
     # Pretty print the run args
     config["output_dir"] = "runs"
-    args_list = [f'--{k}={v}' for k, v in config.items()]
-    args_list.append('--no_tensorboard')
-    args_list.append('--no_cuda')
+    args_list = [f"--{k}={v}" for k, v in config.items()]
+    args_list.append("--no_tensorboard")
+    args_list.append("--no_cuda")
     opts = get_options(args_list)
 
     pp.pprint(vars(opts))
@@ -39,12 +39,12 @@ def run(config: dict()):
 if __name__ == "__main__":
     N_ITER = 100
     ray.init(num_cpus=4)
-    searcher = HyperOptSearch(space=config, metric="loss", mode="min",
-                              n_initial_points=int(N_ITER / 10))
+    searcher = HyperOptSearch(
+        space=config, metric="loss", mode="min", n_initial_points=int(N_ITER / 10)
+    )
     algo = ConcurrencyLimiter(searcher, max_concurrent=15)
     objective = tune.with_resources(
-        tune.with_parameters(run),
-        resources={"cpu": 1, "memory": 400 * 1000000}
+        tune.with_parameters(run), resources={"cpu": 1, "memory": 400 * 1000000}
     )
 
     tuner = tune.Tuner(
