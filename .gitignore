@@ -8,3 +8,5 @@ __pycache__
 outputs/
 data/
 pretrained/
+runs/
+ray_results/

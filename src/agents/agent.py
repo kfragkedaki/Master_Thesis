@@ -3,7 +3,8 @@ import os
 import torch
 
 from src.agents.train import train_epoch, validate
-from src.utils import torch_load_cpu, get_baseline_model, load_attention_model
+from src.utils import torch_load_cpu, get_baseline_model, load_attention_model, load_optimizers, EarlyStopping
+from src.utils.hyperparameter_config import config
 
 from tensorboard_logger import Logger as TbLogger
 from torch.utils.tensorboard import SummaryWriter
@@ -14,6 +15,7 @@ class Agent:
         self,
         opts,
         env,
+        session=None,
     ):
         """
         The Agent is used in companionship with the problem Environment
@@ -25,6 +27,7 @@ class Agent:
         """
         self.opts = opts
         self.env = env
+        self.session = session
 
         # Load data from load_path
         assert (
@@ -49,7 +52,7 @@ class Agent:
             self.model, self.env, self.opts, self.load_data
         )
 
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = load_optimizers(opts.optimizer_class)(
             [{"params": self.model.parameters(), "lr": opts.lr_model}]
         )
 
@@ -70,11 +73,15 @@ class Agent:
         self.tb_logger = {
             "logger": None
             if opts.no_tensorboard
-            else TbLogger(opts.save_dir + "/logs"),
+            else TbLogger(f"{opts.save_dir}/logs"),
             "writer": None
             if opts.no_tensorboard
-            else SummaryWriter(opts.save_dir + "/plots"),
+            else SummaryWriter(log_dir=f"{opts.save_dir}/plots"),
+            "ray": None if not opts.hyperparameter_tuning
+            else SummaryWriter(log_dir=f"{opts.save_dir}/{session.get_trial_id()}"),
         }
+
+        self.early_stopping = EarlyStopping(patience=opts.early_stopping_patience, delta=opts.early_stopping_delta)
 
     def train(
         self,
@@ -125,7 +132,7 @@ class Agent:
             for epoch in range(
                 self.opts.epoch_start, self.opts.epoch_start + self.opts.n_epochs
             ):
-                train_epoch(
+                loss, model = train_epoch(
                     self.model,
                     self.optimizer,
                     self.baseline_model,
@@ -134,5 +141,15 @@ class Agent:
                     val_dataset,
                     self.env,
                     self.tb_logger,
-                    self.opts,
+                    self.opts
                 )
+
+                if self.early_stopping(loss):
+                    print("Early Stopping")
+                    break
+
+            if self.opts.hyperparameter_tuning:
+                self.tb_logger["ray"].add_hparams(hparam_dict={k: v for k, v in vars(self.opts).items() if k in config.keys()}, metric_dict={"loss": loss},
+                                   run_name=f"{self.opts.save_dir}/{self.session.get_trial_id()}")
+                self.tb_logger["ray"].close()
+                torch.save(model, self.session.get_trial_dir() + "/model.pt")

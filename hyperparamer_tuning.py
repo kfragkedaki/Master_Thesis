@@ -20,6 +20,7 @@ def run(config: dict()):
     config["output_dir"] = "runs"
     args_list = [f'--{k}={v}' for k, v in config.items()]
     args_list.append('--no_tensorboard')
+    args_list.append('--no_cuda')
     opts = get_options(args_list)
 
     pp.pprint(vars(opts))

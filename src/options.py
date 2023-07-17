@@ -30,13 +30,13 @@ def get_options(args=None):
     parser.add_argument(
         "--epoch_size",
         type=int,
-        default=512 * 25,
+        default=64000,
         help="Number of instances per epoch during training",
     )
     parser.add_argument(
         "--val_size",
         type=int,
-        default=1000,
+        default=8000,
         help="Number of instances used for reporting validation performance",
     )
     parser.add_argument(

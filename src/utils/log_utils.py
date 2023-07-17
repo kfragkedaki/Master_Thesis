@@ -181,9 +181,6 @@ def log_values(
         tb_logger["ray"].add_scalar("Grad Norm Clipped", grad_norms_clipped[0], epoch)
 
         model_ = get_inner_model(model)
-        for name, param in model_.named_parameters():
-            print("named_parameters ", f"{name}")
-
         # Log the weights of the model
         for name, param in model_.named_parameters():
             tb_logger["ray"].add_histogram(
