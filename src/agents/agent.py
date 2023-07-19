@@ -14,6 +14,7 @@ from src.utils.hyperparameter_config import config
 
 from tensorboard_logger import Logger as TbLogger
 from torch.utils.tensorboard import SummaryWriter
+from ray import tune
 
 
 class Agent:
@@ -153,7 +154,10 @@ class Agent:
                     self.opts,
                 )
 
-                if self.early_stopping(loss):
+                if self.opts.hyperparameter_tuning:
+                    tune.report(loss=loss.item())
+
+                if self.early_stopping(loss.item()):
                     print(f"Early Stopping, epoch {epoch}")
                     break
 
@@ -162,8 +166,12 @@ class Agent:
                     hparam_dict={
                         k: v for k, v in vars(self.opts).items() if k in config.keys()
                     },
-                    metric_dict={"loss": loss},
+                    metric_dict={"loss": loss.item()},
                     run_name=f"{self.opts.save_dir}/{self.session.get_trial_id()}",
                 )
                 self.tb_logger["ray"].close()
                 torch.save(model, self.session.get_trial_dir() + "/model.pt")
+            
+            if not self.opts.no_tensorboard:
+                self.tb_logger["writer"].close()
+                self.tb_logger["logger"].close()

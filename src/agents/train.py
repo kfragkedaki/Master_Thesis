@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader
 from src.utils.log_utils import log_values
 from src.utils.functions import move_to, get_inner_model, set_decode_type
 from torch.utils.data._utils.collate import default_collate
-from ray import tune
 
 
 def validate(model, dataset, opts):
@@ -193,9 +192,6 @@ def train_epoch(
 
     # lr_scheduler should be called at end of epoch
     lr_scheduler.step()
-
-    if opts.hyperparameter_tuning:
-        tune.report(loss=avg_val_cost)
 
     return avg_val_cost, get_inner_model(model).state_dict()
 
