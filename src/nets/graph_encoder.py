@@ -9,8 +9,8 @@ class SkipConnection(nn.Module):
         super(SkipConnection, self).__init__()
         self.module = module
 
-    def forward(self, input):
-        return input + self.module(input)
+    def forward(self, input, **kwargs):
+        return input + self.module(input, **kwargs)
 
 
 class MultiHeadAttention(nn.Module):
@@ -152,22 +152,25 @@ class MultiHeadAttentionLayer(nn.Sequential):
         feed_forward_hidden: int,
         normalization: str = "batch",
     ):
-        super(MultiHeadAttentionLayer, self).__init__(
-            SkipConnection(
-                MultiHeadAttention(num_heads, input_dim=embed_dim, embed_dim=embed_dim)
-            ),
-            Normalization(embed_dim, normalization),
-            SkipConnection(
-                nn.Sequential(
-                    nn.Linear(embed_dim, feed_forward_hidden),
-                    nn.ReLU(),
-                    nn.Linear(feed_forward_hidden, embed_dim),
-                )
-                if feed_forward_hidden > 0
-                else nn.Linear(embed_dim, embed_dim)
-            ),
-            Normalization(embed_dim, normalization),
-        )
+        super(MultiHeadAttentionLayer, self).__init__()
+
+        self.attention = SkipConnection(MultiHeadAttention(num_heads, input_dim=embed_dim, embed_dim=embed_dim))
+        self.bn1 = Normalization(embed_dim, normalization)
+        self.bn2 = Normalization(embed_dim, normalization)
+        self.ff = SkipConnection(nn.Sequential(
+                nn.Linear(embed_dim, feed_forward_hidden),
+                nn.ReLU(),
+                nn.Linear(feed_forward_hidden, embed_dim),
+            ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim))
+
+    def forward(self, input, mask=None):
+        # Pass mask to the MultiHeadAttention
+        out = self.attention(input, mask=mask)
+        out = self.bn1(out)
+        out = self.ff(out)
+        out = self.bn2(out)
+
+        return out
 
 
 class GraphAttentionEncoder(nn.Module):
@@ -181,17 +184,18 @@ class GraphAttentionEncoder(nn.Module):
     ):
         super(GraphAttentionEncoder, self).__init__()
 
-        self.layers = nn.Sequential(
-            *(
+        self.layers = nn.ModuleList(
+            [
                 MultiHeadAttentionLayer(
                     num_heads, embed_dim, feed_forward_hidden, normalization
                 )
                 for _ in range(num_attention_layers)
-            )
+            ]
         )
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         # Batch multiply to get initial embeddings of nodes
-        out = self.layers(x)
+        for layer in self.layers:
+            out = layer(x, mask=mask)
 
         return out  # (batch_size, graph_size, embed_dim)

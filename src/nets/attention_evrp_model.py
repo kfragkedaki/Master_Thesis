@@ -119,15 +119,19 @@ class AttentionEVRPModel(nn.Module):
         else:
             self.graphs = None
 
+        mask_non_neighbors = (
+                input["coords"][:, :, None, :] - input["coords"][:, None, :, :]
+            ).norm(p=2, dim=-1) > self.opts.battery_limit # batch_size, graph_size, graph_size
+
         if (
             self.checkpoint_encoder and self.training
         ):  # Only checkpoint if we need gradients
-            embeddings = checkpoint(self.encoder, self._init_embed(input))
+            embeddings = checkpoint(self.encoder, self._init_embed(input), mask_non_neighbors)
         else:
-            embeddings = self.encoder(self._init_embed(input))
+            embeddings = self.encoder(self._init_embed(input), mask=mask_non_neighbors)
 
-        self.encoder_data["input"] = input["coords"].cpu().detach()
-        self.encoder_data["embeddings"] = embeddings.cpu().detach()
+        self.encoder_data["input"] = input["coords"].detach().cpu()
+        self.encoder_data["embeddings"] = embeddings.detach().cpu()
 
         cost, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(
             input, embeddings
