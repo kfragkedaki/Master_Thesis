@@ -174,4 +174,3 @@ class Agent:
             
             if not self.opts.no_tensorboard:
                 self.tb_logger["writer"].close()
-                self.tb_logger["logger"].close()

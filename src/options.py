@@ -222,7 +222,7 @@ def get_options(args=None):
     parser.add_argument(
         "--early_stopping_delta",
         type=float,
-        default=5.0,
+        default=0.0,
         help="Use of Ray for hyperparameter tuning",
     )
 
