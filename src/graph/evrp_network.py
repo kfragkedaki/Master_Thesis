@@ -117,20 +117,25 @@ class EVRPNetwork:
         num_rows = np.ceil(len(graph_idxs) / num_columns).astype(int)
 
         # plot each graph in a 3 x num_rows grid
-        fig = plt.figure(figsize=(4 * num_columns, 4 * num_rows))
+        fig, axs = plt.subplots(num_rows, num_columns, figsize=(7 * num_columns, 5.5 * num_rows))
+        plt.subplots_adjust(wspace=0.02, hspace=0.02)
 
-        for n, graph_idx in enumerate(graph_idxs):
-            ax = plt.subplot(num_rows, num_columns, n + 1)
+        # Flatten axs to easily iterate over it
+        if num_rows == 1 and num_columns == 1:
+            axs = [axs]
+        else:
+            axs = axs.ravel()
 
-            plt.axis("equal")
-            ax.set_xlim([-0.7, 1.3])
-            ax.set_ylim([-0.7, 1.3])
+        for col, graph_idx in enumerate(graph_idxs):
+            axs[col].set_aspect("equal")
+            axs[col].set_xlim([-0.7, 1.3])
+            axs[col].set_ylim([-0.7, 1.3])
 
-            if with_labels and n == len(graph_idxs) - 1:
+            if with_labels and col == len(graph_idxs) - 1:
                 legend = with_labels
             else:
                 legend = False
-            self.graphs[graph_idx].draw(ax=ax, with_labels=legend)
+            self.graphs[graph_idx].draw(ax=axs[col], with_labels=legend)
 
             if len(selected) > 0:
                 trailer_id, truck_id, node_id, time = selected
@@ -147,7 +152,7 @@ class EVRPNetwork:
         time = selected[-1] if len(selected) > 0 else 0
 
         if file is None:
-            plt.show(bbox_inches="tight")
+            plt.show()
         else:
             plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
 
@@ -168,7 +173,7 @@ class EVRPNetwork:
         """
         edges = []
         for i, row in enumerate(transition_matrix):
-            edges.append(self.graphs[i].visit_edge(row))
+            edges.append(self.graphs[i].visit_edges(row))
 
         return edges
 

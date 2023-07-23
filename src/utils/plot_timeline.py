@@ -30,31 +30,31 @@ def plot_timeline(data: np.array = []) -> None:
             trailer_names.append(trailer)
 
         block = dict(
-            Truck="Truck {}".format(truck),
-            StartTime=time,
-            FinishTime=time + 1,
+            Truck=truck,
+            StartTime=int(time),
+            FinishTime=int(time + 1),
             StartNode="Node {}".format(start_node),
             EndNode="Node {}".format(target_node),
             Trailer=trailer,
         )
         df = df.append(block, ignore_index=True)
 
-    df["StartTime"] = pd.to_datetime(df["StartTime"], unit="h")
-    df["FinishTime"] = pd.to_datetime(df["FinishTime"], unit="h")
-
     fig = go.Figure()
 
     # Generate a categorical color scale based on the unique trailer names
     trailer_colors = px.colors.qualitative.Set3[: len(trailer_names)]
-
+    y_data = []
     for truck, truck_df in df.groupby("Truck"):
         for idx, row in truck_df.iterrows():
+            truck_name = "Truck {} ".format(truck)
+            if truck_name not in y_data:
+                y_data.append(truck_name)
             fig.add_trace(
                 go.Scatter(
                     x=[row["StartTime"], row["FinishTime"]],
                     y=[truck, truck],
                     mode="lines",
-                    name=truck,
+                    name=truck_name,
                     line=dict(
                         width=20,
                         color=trailer_colors[trailer_names.index(row["Trailer"])],
@@ -65,14 +65,14 @@ def plot_timeline(data: np.array = []) -> None:
             )
             fig.add_annotation(
                 x=row["StartTime"],
-                y=truck,
+                y=truck-0.1,
                 xref="x",
                 yref="y",
                 showarrow=False,
                 arrowhead=2,
                 arrowsize=1.5,
                 arrowwidth=1.5,
-                ax=20,
+                ax=-5,
                 ay=0,
                 text=row["StartNode"],
                 font=dict(size=8),
@@ -82,14 +82,14 @@ def plot_timeline(data: np.array = []) -> None:
 
             fig.add_annotation(
                 x=row["FinishTime"],
-                y=truck,
+                y=truck-0.1,
                 xref="x",
                 yref="y",
                 showarrow=False,
                 arrowhead=2,
                 arrowsize=1.5,
                 arrowwidth=1.5,
-                ax=-20,
+                ax=-5,
                 ay=0,
                 text=row["EndNode"],
                 font=dict(size=8),
@@ -111,10 +111,17 @@ def plot_timeline(data: np.array = []) -> None:
             )
         )
 
+    base_size = 100
     fig.add_traces(legend_data)
-    fig.update_layout(legend=dict(traceorder="reversed"), showlegend=True)
-    fig.update_xaxes(showticklabels=False)
-
+    fig.update_layout(
+        # xaxis=dict(range=[df["StartTime"].min() - 0.5, df["FinishTime"].max() + 0.5]), 
+        yaxis=dict(
+            type='category',
+            tickvals=df["Truck"].unique(),
+            ticktext=y_data),
+        margin=dict(pad=5),
+        legend=dict(traceorder="reversed"), showlegend=True, width=base_size * len(df), height=1.25*base_size * (len(df["Truck"].unique())+1), autosize=False)
+    fig.update_xaxes(title="Steps")
     fig.update_yaxes(autorange="reversed")  # Tasks listed from top to bottom
     fig.show()
 

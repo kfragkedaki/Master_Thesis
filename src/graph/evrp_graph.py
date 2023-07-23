@@ -202,8 +202,7 @@ class EVRPGraph:
 
         return x_control, y_control
 
-    def add_legend(self, trailers, trucks):
-        plt.subplots_adjust(right=0.8)
+    def add_legend(self, ax, trailers, trucks):
         keys = []
         custom_lines = []
 
@@ -219,10 +218,10 @@ class EVRPGraph:
             keys.append(key)
             custom_lines.append(Line2D([0], [0], color="black", lw=2, ls=value))
 
-        plt.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.3, 1))
+        ax.legend(custom_lines, keys, loc="upper right", bbox_to_anchor=(1.35, 1))
 
     def draw_graph_with_multicolor_circles(self, pos, ax, node_colors_dict):
-        radius = 0.15
+        radius = 0.20
 
         # Draw concentric circles around the nodes
         for node, colors in node_colors_dict.items():
@@ -236,23 +235,6 @@ class EVRPGraph:
                     facecolor="none",
                 )
                 ax.add_artist(circle)
-
-    def normalize_positions(self, pos):
-        x_values, y_values = zip(*pos.values())
-
-        x_min = min(x_values)
-        x_max = max(x_values)
-        y_min = min(y_values)
-        y_max = max(y_values)
-
-        pos_normalized = {}
-        for node, (x, y) in pos.items():
-            pos_normalized[node] = (
-                (x - x_min) / (x_max - x_min),
-                (y - y_min) / (y_max - y_min),
-            )
-
-        return pos_normalized
 
     def draw(self, ax, with_labels=True):
         """
@@ -292,7 +274,7 @@ class EVRPGraph:
             ] = "solid"  # this should never appear, since we cannot move without a truck
 
             if with_labels:
-                self.add_legend(color, style)
+                self.add_legend(ax, color, style)
 
             # chargers
             node_num_chargers = nx.get_node_attributes(graph_copy, "num_chargers")
@@ -376,15 +358,20 @@ class EVRPGraph:
                         pos_source, pos_target, offset
                     )
 
+                    # get direction of the arrow
+                    direction = np.array(pos_target) - np.array(pos_source)
+                    # normalize the direction
+                    direction /= np.linalg.norm(direction)
+
                     arrow = FancyArrowPatch(
-                        pos_source,
-                        pos_target,
+                        pos_source + 0.07 * direction,
+                        pos_target - 0.07 * direction,
                         connectionstyle=f"arc3, rad={offset}",
-                        arrowstyle="->, head_length=0.5, head_width=0.3",
+                        arrowstyle="->, head_length=0.3, head_width=0.2",
                         linestyle=data["style"],
                         linewidth=1,
                         color=data["color"],
-                        zorder=-key,
+                        zorder=100,
                         alpha=0.7,
                         mutation_scale=20,
                     )
@@ -393,7 +380,7 @@ class EVRPGraph:
 
                     x_label = (pos_source[0] + x_control) / 2
                     y_label = (pos_source[1] + y_control) / 2
-                    plt.text(
+                    ax.text(
                         x_label,
                         y_label,
                         data["label"],
@@ -401,7 +388,7 @@ class EVRPGraph:
                         bbox=dict(facecolor="white", edgecolor="none", alpha=0.5),
                     )
 
-    def visit_edge(self, data: list = []) -> tuple:
+    def visit_edges(self, data: list = []) -> tuple:
         """
         Add the visited edges.
 
@@ -413,6 +400,7 @@ class EVRPGraph:
             timestamp (src): Timestamp id of the edge
         """
 
+        edges = []
         for source_node, target_node, truck, trailer, timestamp in data:
             source_node = int(source_node)
             target_node = int(target_node)
@@ -445,7 +433,8 @@ class EVRPGraph:
                 not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
             ), f"The truck is not in the source node, {truck_id}, {trucks}"
 
-            self.get_neighbors(source_node, self.r_threshold)
+            edges.append((source_node, target_node, truck_id, trailer_id, int(timestamp)))
+            self.get_neighbors(source_node)
             self.graph.add_edges_from(
                 [
                     (
@@ -460,10 +449,10 @@ class EVRPGraph:
                 ]
             )
 
-            return (source_node, target_node, truck_id, trailer_id, int(timestamp))
+        return edges
 
     def update_attributes(self, edge: list) -> None:
-        source_node, target_node, truck_id, trailer_id, timestep = edge
+        source_node, target_node, truck_id, trailer_id, timestamp = edge
         chargers = self._node_chargers
 
         for node_index in range(self.num_nodes):  # reset
@@ -567,14 +556,26 @@ class EVRPGraph:
 
         return np.linalg.norm(node_one_pos - node_two_pos)
 
-    def get_neighbors(self, cur_node, r_threshold) -> np.ndarray:
+    def get_neighbors(self, cur_node) -> np.ndarray:
         nns = []
         for node in self.graph.nodes():
-            if node != cur_node and self.euclid_distance(cur_node, node) <= r_threshold:
+            if node != cur_node and self.euclid_distance(cur_node, node) <= self.r_threshold:
                 self.graph.nodes[node]["node_color"] = "lightgray"
                 nns.append(node)
 
         return nns
+
+    def plot_neighbors(self, ax, with_labels=True) -> None:
+        pos = nx.get_node_attributes(self.graph, "coordinates")
+
+        nn_edges = []
+        for cur_node in self.graph.nodes():
+            for node in self.graph.nodes():
+                if node != cur_node and self.euclid_distance(cur_node, node) <= self.r_threshold:
+                    nn_edges.append((cur_node, node))
+
+        self.draw(ax, with_labels)
+        nx.draw_networkx_edges(self.graph, pos, edgelist=nn_edges, ax=ax, width=0.5)
 
 
 EXAMPLE_GRAPH = {
@@ -628,25 +629,25 @@ if __name__ == "__main__":
     # add edges that where visited
     edges = [(1, 0, 0, None, 1), (2, 0, 1, None, 2), (0, 3, 0, 2, 3)]
 
-    for edge in edges:
-        fig, ax = plt.subplots()
-
-        G.draw(ax=ax, with_labels=True)
-        G.clear()
-        edge = G.visit_edge([edge])
-        G.update_attributes(edge)
-
-        plt.axis("equal")
-        ax.set_xlim([-0.7, 1.3])
-        ax.set_ylim([-0.7, 1.3])
-        plt.show()
-
     fig, ax = plt.subplots()
     G.draw(ax=ax, with_labels=True)
-    plt.axis("equal")
+    ax.set_aspect("equal")
     ax.set_xlim([-0.7, 1.3])
     ax.set_ylim([-0.7, 1.3])
     plt.show()
+
+    for edge in edges:
+        fig, ax = plt.subplots()
+
+        G.clear()
+        edges = G.visit_edges([edge])
+        G.update_attributes(edges[0])
+
+        G.draw(ax=ax, with_labels=True)
+        ax.set_aspect("equal")
+        ax.set_xlim([-0.7, 1.3])
+        ax.set_ylim([-0.7, 1.3])
+        plt.show()
 
     print(G._edges)
     print(G._nodes)

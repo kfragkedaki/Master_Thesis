@@ -185,9 +185,10 @@ class AttentionEVRPModel(nn.Module):
 
             i += 1
 
-        cost = torch.where(
-            state.force_stop == 1, state.lengths.sum(1) * 2, state.lengths.sum(1)
-        )  # TODO test other options *1.5?
+        # cost = torch.where(
+        #     state.force_stop == 1, state.lengths.sum(1) * 2, state.lengths.sum(1)
+        # )
+        cost = state.lengths.sum(1)
 
         # Collected lists, return Tensor
         return (

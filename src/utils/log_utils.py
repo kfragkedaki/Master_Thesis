@@ -135,6 +135,32 @@ def log_values(
         tb_logger["logger"].log_value("grad_norm", grad_norms[0], step)
         tb_logger["logger"].log_value("grad_norm_clipped", grad_norms_clipped[0], step)
 
+        # Log the weights for each layer
+        model_ = get_inner_model(model)
+        for name, param in model_.named_parameters():
+            tb_logger["writer"].add_histogram(
+                f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
+            )
+            gradient = param.clone().cpu().grad
+            if gradient is not None:
+                tb_logger["writer"].add_histogram(
+                    f"Gradient: {name}", gradient.data.numpy(), epoch
+                )
+
+        encoder_distance = {
+            "input_distance": (
+                    model_.encoder_data["input"][0, :, None, :]
+                    - model_.encoder_data["input"][0, None, :, :]
+            ).norm(p=2, dim=-1),
+            "embedding_distance": (
+                    model_.encoder_data["embeddings"][0, :, None, :]
+                    - model_.encoder_data["embeddings"][0, None, :, :]
+            ).norm(p=2, dim=-1),
+        }
+
+        plot_encoder_data(encoder_distance, tb_logger, epoch)
+        plot_attention_weights(model_, tb_logger, epoch)
+
         if opts.baseline == "critic":
             tb_logger["logger"].log_value("critic_loss", bl_loss.item(), step)
             tb_logger["logger"].log_value("critic_grad_norm", grad_norms[1], step)
@@ -142,38 +168,6 @@ def log_values(
                 "critic_grad_norm_clipped", grad_norms_clipped[1], step
             )
 
-        if opts.display_graphs is not None:
-            # Log the weights for each encoder layer
-            model_ = get_inner_model(model)
-            for layer_idx in range(model_.n_encode_layers):
-                encoder_layer = model_.encoder.layers[layer_idx]
-                for name, param in encoder_layer.named_parameters():
-                    tb_logger["writer"].add_histogram(
-                        f"Encoder Layer {layer_idx + 1}/{name}",
-                        param.clone().cpu().data.numpy(),
-                        epoch,
-                    )
-
-            # Log the weights of the model
-            for name, param in model_.named_parameters():
-                if "encoder" not in name:
-                    tb_logger["writer"].add_histogram(
-                        f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
-                    )
-
-            encoder_distance = {
-                "input_distance": (
-                    model_.encoder_data["input"][0, :, None, :]
-                    - model_.encoder_data["input"][0, None, :, :]
-                ).norm(p=2, dim=-1),
-                "embedding_distance": (
-                    model_.encoder_data["embeddings"][0, :, None, :]
-                    - model_.encoder_data["embeddings"][0, None, :, :]
-                ).norm(p=2, dim=-1),
-            }
-
-            plot_encoder_data(encoder_distance, tb_logger, epoch)
-            plot_attention_weights(model_, tb_logger, epoch)
 
     if opts.hyperparameter_tuning:
         tb_logger["ray"].add_scalar("Average Cost", avg_cost, epoch)
