@@ -6,7 +6,8 @@ from src.utils.load_json import get_information_from_dict
 from src.utils.truck_naming import get_truck_names
 from matplotlib.lines import Line2D
 import copy
-
+import torch
+from src.utils.plot_timeline import get_trailer_colors
 
 class EVRPGraph:
     graph: nx.Graph = nx.Graph()
@@ -37,14 +38,36 @@ class EVRPGraph:
         self.r_threshold = r_threshold
 
         # generate graph and set node position
-        self.graph = nx.complete_graph(num_nodes, nx.MultiDiGraph())
+        self.graph = nx.MultiDiGraph()
+
         if data is not None:
+            self.graph.add_nodes_from(data.keys())
             nx.set_node_attributes(self.graph, "lightblue", "node_color")
             nx.set_node_attributes(self.graph, data)
         elif len(kwargs) > 0:
             self.set_default_attributes(**kwargs)
         else:
             self.set_default_attributes()
+
+        self.create_edges()
+
+    def calculate_distances(self, input: torch.Tensor):
+        distances = (input[:, None, :] - input[None, :, :]
+                     ).norm(p=2, dim=-1)
+
+        return distances
+
+    def create_edges(self):
+        coords = nx.get_node_attributes(self.graph, 'coordinates')
+
+        # add edges to the graph
+        distance_matrix = self.calculate_distances(torch.tensor(np.array(list(coords.values()))))
+        # add edges with weights to the graph
+        for i in range(self.num_nodes):
+            for j in range(i + 1, self.num_nodes):
+                if distance_matrix[i, j] <= self.r_threshold:
+                    self.graph.add_edge(i, j, weight=distance_matrix[i, j])
+                    self.graph.add_edge(j, i, weight=distance_matrix[i, j])  # add the other direction as well
 
     def set_default_attributes(
         self,
@@ -66,9 +89,12 @@ class EVRPGraph:
         """
 
         # Node Attributes
+        self.graph.add_nodes_from(list(range(self.num_nodes)))
+       
         # If data is not provided, generate it
         if coords is None:
             coords = self._compute_coordinates(r_threshold=self.r_threshold)
+
         if num_chargers is None:
             num_chargers = dict(
                 enumerate(np.random.randint(low=1, high=5, size=self.num_nodes))
@@ -257,7 +283,9 @@ class EVRPGraph:
 
         # draw attributes
         if self.plot_attributes:
-            colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
+            # colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
+            colors = get_trailer_colors(self.num_trailers + 1)
+            
             color = {f"Trailer {i}": colors[i] for i in range(self.num_trailers)}
             color[None] = "black"
 
@@ -361,34 +389,35 @@ class EVRPGraph:
                     # get direction of the arrow
                     direction = np.array(pos_target) - np.array(pos_source)
                     # normalize the direction
-                    direction /= np.linalg.norm(direction)
+                    if np.linalg.norm(direction) != 0:
+                        direction /= np.linalg.norm(direction)
 
-                    arrow = FancyArrowPatch(
-                        pos_source + 0.07 * direction,
-                        pos_target - 0.07 * direction,
-                        connectionstyle=f"arc3, rad={offset}",
-                        arrowstyle="->, head_length=0.3, head_width=0.2",
-                        linestyle=data["style"],
-                        linewidth=1,
-                        color=data["color"],
-                        zorder=100,
-                        alpha=0.7,
-                        mutation_scale=20,
-                    )
+                        arrow = FancyArrowPatch(
+                            pos_source + 0.07 * direction,
+                            pos_target - 0.07 * direction,
+                            connectionstyle=f"arc3, rad={offset}",
+                            arrowstyle="->, head_length=0.3, head_width=0.2",
+                            linestyle=data["style"],
+                            linewidth=1,
+                            color=data["color"],
+                            zorder=100,
+                            alpha=0.7,
+                            mutation_scale=20,
+                        )
 
-                    ax.add_patch(arrow)
+                        ax.add_patch(arrow)
 
-                    x_label = (pos_source[0] + x_control) / 2
-                    y_label = (pos_source[1] + y_control) / 2
-                    ax.text(
-                        x_label,
-                        y_label,
-                        data["label"],
-                        fontsize=8,
-                        bbox=dict(facecolor="white", edgecolor="none", alpha=0.5),
-                    )
+                        x_label = (pos_source[0] + x_control) / 2
+                        y_label = (pos_source[1] + y_control) / 2
+                        ax.text(
+                            x_label,
+                            y_label,
+                            data["label"],
+                            fontsize=8,
+                            bbox=dict(facecolor="white", edgecolor="none", alpha=0.5),
+                        )
 
-    def visit_edges(self, data: list = []) -> tuple:
+    def visit_edges(self, data: list = []) -> list:
         """
         Add the visited edges.
 
@@ -433,7 +462,7 @@ class EVRPGraph:
                 not bool(trucks) or (bool(trucks) and truck_id not in trucks.keys())
             ), f"The truck is not in the source node, {truck_id}, {trucks}"
 
-            edges.append((source_node, target_node, truck_id, trailer_id, int(timestamp)))
+            edge = (source_node, target_node, truck_id, trailer_id, int(timestamp))
             self.get_neighbors(source_node)
             self.graph.add_edges_from(
                 [
@@ -449,9 +478,12 @@ class EVRPGraph:
                 ]
             )
 
+            self.update_attributes(edge)
+            edges.append(edge)
+
         return edges
 
-    def update_attributes(self, edge: list) -> None:
+    def update_attributes(self, edge: tuple) -> None:
         source_node, target_node, truck_id, trailer_id, timestamp = edge
         chargers = self._node_chargers
 
@@ -640,9 +672,7 @@ if __name__ == "__main__":
         fig, ax = plt.subplots()
 
         G.clear()
-        edges = G.visit_edges([edge])
-        G.update_attributes(edges[0])
-
+        G.visit_edges([edge])
         G.draw(ax=ax, with_labels=True)
         ax.set_aspect("equal")
         ax.set_xlim([-0.7, 1.3])

@@ -140,21 +140,20 @@ class EVRPNetwork:
             if len(selected) > 0:
                 trailer_id, truck_id, node_id, time = selected
                 txt = f"{int(time)}: trailer {int(trailer_id[graph_idx])}, truck {int(truck_id[graph_idx])}, node {int(node_id[graph_idx])}"
-                plt.text(
-                    0.5,
-                    1.1,
+                axs[col].set_title(
                     txt,
-                    horizontalalignment="center",
-                    fontsize=14,
-                    transform=plt.gca().transAxes,
+                    loc="right",
+                    fontdict={'fontsize': 14},
                 )
 
         time = selected[-1] if len(selected) > 0 else 0
 
         if file is None:
             plt.show()
+            plt.close()
         else:
             plt.savefig(f"{file}/{name or int(time)}.png", bbox_inches="tight")
+            plt.close()
 
         # convert to plot to rgb-array
         fig.canvas.draw()
@@ -176,10 +175,6 @@ class EVRPNetwork:
             edges.append(self.graphs[i].visit_edges(row))
 
         return edges
-
-    def update_attributes(self, edge) -> None:
-        for i, graph in enumerate(self.graphs):
-            graph.update_attributes(edge[i])
 
     def get_graph_positions(self) -> torch.Tensor:
         """
