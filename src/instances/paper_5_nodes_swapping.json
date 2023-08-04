@@ -54,9 +54,9 @@
       {
         "id": "Trailer 1",
         "originNodeId": 1,
-        "destinationNodeId": 0,
-        "startTime": 15,
-        "endTime": 8
+        "destinationNodeId": 3,
+        "startTime": 15.0,
+        "endTime": 9
       },
       {
         "id": "Trailer 2",
@@ -68,9 +68,9 @@
       {
         "id": "Trailer 3",
         "originNodeId": 1,
-        "destinationNodeId": 3,
-        "startTime": 15.0,
-        "endTime": 9
+        "destinationNodeId": 0,
+        "startTime": 15,
+        "endTime": 8
       }
     ]
   }
