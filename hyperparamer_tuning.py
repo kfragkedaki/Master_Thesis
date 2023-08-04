@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         trainable=objective,
-        run_config=air.RunConfig(local_dir="./ray_results"),
+        run_config=air.RunConfig(storage_path="./ray_results"),
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
@@ -57,3 +57,4 @@ if __name__ == "__main__":
     )
 
     results = tuner.fit()
+    ray.shutdown()

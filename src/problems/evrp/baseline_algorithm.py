@@ -39,6 +39,7 @@ def route_distance(route, distances):
     cost = sum(distances[route[i], route[i+1]] for i in range(len(route)-1))
     return cost
 
+
 def select_route(graph, truck_loc, trailer_loc, trailer_destination, trailer_idx):
     route = []
     trailer_route = []
@@ -51,11 +52,6 @@ def select_route(graph, truck_loc, trailer_loc, trailer_destination, trailer_idx
     trailer_route = trailer_route + [trailer_idx for _ in range(len(tour))]
 
     return route, trailer_route
-
-
-def route_distance(route, distances):
-    cost = sum(distances[route[i], route[i+1]] for i in range(len(route)-1))
-    return cost
 
 
 def solve_evrp(graph, environment):
