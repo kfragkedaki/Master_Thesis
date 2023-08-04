@@ -20,6 +20,7 @@ class StateEVRP(NamedTuple):
     avail_chargers: torch.Tensor  # Keeps the available chargers per node
     node_trucks: torch.Tensor  # Keeps the trucks per node
     node_trailers: torch.Tensor  # Keeps the trailers per node
+    node_charged_trucks: torch.Tensor  # Keeps the charged trucks per node
 
     trucks_locations: torch.Tensor  # trucks location
     trucks_battery_levels: torch.Tensor  # trucks battery level
@@ -28,11 +29,15 @@ class StateEVRP(NamedTuple):
 
     visited_: torch.Tensor  # Keeps track of nodes that have been visited
     lengths: torch.Tensor
+    penalty: torch.Tensor
+    reward: torch.Tensor
     cur_coord: torch.Tensor
     i: torch.Tensor  # Keeps track of step
     force_stop: torch.Tensor
+    r_threshold: torch.Tensor
 
     decision: torch.Tensor
+    timestep: torch.Tensor
 
     def __getitem__(self, key):
         assert torch.is_tensor(key) or isinstance(
@@ -55,10 +60,13 @@ class StateEVRP(NamedTuple):
             lengths=self.lengths[key],
             cur_coord=self.cur_coord[key] if self.cur_coord is not None else None,
             decision=self.decision[key],
+            timestep=self.timestep[key],
+            penalty=self.penalty[key],
+            reward=self.reward[key]
         )
 
     @staticmethod
-    def initialize(input, visited_dtype=torch.uint8):
+    def initialize(input, r_threshold, visited_dtype=torch.uint8):
         device = input["coords"].device
 
         batch_size, num_nodes, coords_size = input["coords"].size()
@@ -72,6 +80,7 @@ class StateEVRP(NamedTuple):
             avail_chargers=input["avail_chargers"].to(device),
             node_trucks=input["node_trucks"].to(device),
             node_trailers=input["node_trailers"].to(device),
+            node_charged_trucks=input["node_trucks"].to(device),
             ids=torch.arange(batch_size, dtype=torch.int64, device=device)[
                 :, None
             ],  # Add steps dimension
@@ -93,13 +102,16 @@ class StateEVRP(NamedTuple):
             ),  # Vector with length num_steps
             force_stop=torch.zeros(batch_size, dtype=torch.int64, device=device),
             decision=torch.zeros(batch_size, 3, 1, dtype=torch.uint8, device=device),
+            timestep=torch.zeros(batch_size, 1, dtype=torch.uint8, device=device),
+            penalty=torch.zeros(batch_size, 1, dtype=torch.float64, device=device),
+            reward=torch.zeros(batch_size, 1, dtype=torch.float64, device=device),
+            r_threshold=torch.tensor(r_threshold, dtype=torch.float64, device=device),
         )
 
-    # def get_final_cost(self):
-    # # if not finished follow the same logic as on the attention_evrp_model.py
-    #     # assert self.all_finished()
-    #
-    #     return self.lengths
+    def get_final_cost(self):
+        # to reduce the cost function we substract the reward
+        cost = self.lengths.sum(1).unsqueeze(-1) + self.penalty - self.reward
+        return cost.squeeze(-1)
 
     def update(self, selected_trailer, selected_truck, selected_node):
         # TODO Check different scenarios
@@ -145,6 +157,9 @@ class StateEVRP(NamedTuple):
         node_trucks = torch.zeros(
             size=self.node_trucks.shape, device=device
         )  # reset values
+        node_charged_trucks = torch.zeros(
+            size=self.node_trucks.shape, device=device
+        )
         node_trailers = torch.zeros(
             size=self.node_trailers.shape, device=device
         )  # reset values
@@ -210,6 +225,15 @@ class StateEVRP(NamedTuple):
             trailers_locations.to(torch.int),
         ] = 1
 
+        # Locations of charged trucks
+        locations_trucks_charged = trucks_locations[trucks_battery_levels.bool()].unsqueeze(-1).unsqueeze(-1)
+
+        # Update node_trucks for only charged trucks
+        node_charged_trucks[
+            self.ids.unsqueeze(-1).expand(locations_trucks_charged.shape),
+            locations_trucks_charged.to(torch.int),
+        ] = 1
+
         # Add the length
         # self includes the previous state (not yet updated)
         cur_coord = self.coords.gather(
@@ -232,7 +256,36 @@ class StateEVRP(NamedTuple):
             p=2, dim=-1
         )  # (batch_dim, 1)
 
-        timestep = torch.full_like(selected_trailer[self.ids], int(self.i))
+        trailers_finished = torch.eq(
+            self.trailers_destinations, trailers_locations
+        ).squeeze(-1)  # when a trailer reached its destination in this or previous steps
+
+        # penalty when the selected truck stays on the same location as before
+        # while the selected trailer is still to be served
+        penalty = torch.where(
+            torch.logical_and(~trailers_finished[self.ids, selected_trailer.unsqueeze(-1)], (lengths == self.lengths)[self.ids, selected_truck.unsqueeze(-1)]),
+            self.penalty + self.r_threshold - 0.1,
+            self.penalty,
+        )
+
+        # reward when a trailer reaches its destination in this step
+        # Encourage using the trucks with less distance travelled - length of the truck
+        reward = torch.where(
+            torch.logical_and(trailers_finished[self.ids, selected_trailer.unsqueeze(-1)],
+                              ~(lengths == self.lengths)[self.ids, selected_truck.unsqueeze(-1)]),
+            self.reward + 1 / (lengths[self.ids, selected_truck.unsqueeze(-1)] + int(self.i)/10),
+            self.reward,
+        )
+
+        finished_batches = torch.all(
+            torch.eq(self.trailers_destinations, self.trailers_locations), dim=1
+        )
+
+        timestep = torch.where(
+            finished_batches,  # if it has finished before this step
+            self.timestep,
+            torch.full_like(selected_trailer[self.ids], int(self.i))
+        )  # (batch_size, 1)
         trailer_id = torch.where(
             torch.logical_and(condition, valid_truck),
             selected_trailer[self.ids],
@@ -262,12 +315,16 @@ class StateEVRP(NamedTuple):
             cur_coord=cur_coord,
             i=self.i + 1,
             avail_chargers=avail_chargers,
+            node_charged_trucks=node_charged_trucks,
             node_trucks=node_trucks,
             node_trailers=node_trailers,
             trucks_locations=trucks_locations,
             trucks_battery_levels=trucks_battery_levels,
             trailers_locations=trailers_locations,
             decision=decision,
+            timestep=timestep,
+            penalty=penalty,
+            reward=reward,
         )
 
     def all_finished(self):
@@ -300,51 +357,50 @@ class StateEVRP(NamedTuple):
             k=int(num_nodes / 2), dim=-1, largest=False
         )[1]
 
-    def get_mask(self, selected_truck, r_threshold=0.6):
+    def get_mask(self, selected_truck):
         # Mask current node (the cost of staying on the same node remains 0, so it is the best choice)
         # Mask the nodes that the truck cannot go to because of its battery limits
-        graph_size = self.node_trailers.shape[1]
-        device = self.node_trailers.device
+        # graph_size = self.node_trailers.shape[1]
+        # device = self.node_trailers.device
         cur_nodes = (
             self.trucks_locations[self.ids, selected_truck[self.ids]]
             .squeeze(-1)
             .to(torch.int64)
         )  # if truck is -1, this will give the last value of the tensor.
 
-        init_mask = torch.zeros(self.num_chargers.shape, device=device)
+        # init_mask = torch.zeros(self.num_chargers.shape, device=device)
+        #
+        # # mask finished batches
+        # condition = torch.all(
+        #     torch.eq(self.trailers_destinations, self.trailers_locations), dim=1
+        # )
 
-        # mask finished batches
-        condition = torch.all(
-            torch.eq(self.trailers_destinations, self.trailers_locations), dim=1
-        )
+        # Not moving may be a good choice as well, but we need to add a penatly for that
+        # so we removed the masking of the current node
 
-        # TODO check without this masking.
-        #  Probably not moving maybe a good choice as well, but we need to add a penatly for that?
-        #  PENALTY IS THE MAX, MIN OR MEAN DISTANCE + 0.1 ??
-        # if batch is not yet done, then mask the current node
-        mask = torch.full_like(init_mask, False, dtype=torch.bool, device=device)
-        mask[self.ids, cur_nodes] = True
+        # # if batch is not yet done, then mask the current node
+        # mask = torch.full_like(init_mask, False, dtype=torch.bool, device=device)
+        # # mask[self.ids, cur_nodes] = True
 
         mask_distanced_nodes = (
-            self.distances[self.ids, cur_nodes] > r_threshold
-        ).transpose(
-            1, 2
-        )  # batch_size, graph_size, 1
+            self.distances[self.ids, cur_nodes] > self.r_threshold
+        )  # batch_size, 1, graph_size
 
-        # mask all other nodes apart from truck's location if batch has finished
-        masking_total = torch.logical_or(mask, mask_distanced_nodes)
-        output = torch.where(
-            torch.logical_or(
-                condition.unsqueeze(-1),
-                torch.all(masking_total, dim=1)
-                .unsqueeze(-1)
-                .expand(-1, graph_size, -1),
-            ),
-            ~mask,
-            masking_total,
-        )
+        # # mask all other nodes apart from truck's location if batch has finished
+        # masking_total = torch.logical_or(mask, mask_distanced_nodes)
+        # output = torch.where(
+        #     torch.logical_or(
+        #         condition.unsqueeze(-1),
+        #         torch.all(masking_total, dim=1)
+        #         .unsqueeze(-1)
+        #         .expand(-1, graph_size, -1),
+        #     ),
+        #     ~mask,
+        #     masking_total,
+        # )
 
-        return output.transpose(1, 2)  # batch_size, 1, graph_size
-
+        # return output.transpose(1, 2)  # batch_size, 1, graph_size
+        return mask_distanced_nodes # batch_size, 1, graph_size
+    
     def construct_solutions(self, actions):
         return actions

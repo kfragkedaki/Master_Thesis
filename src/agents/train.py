@@ -14,15 +14,28 @@ from torch.utils.data._utils.collate import default_collate
 def validate(model, dataset, opts):
     # Validate
     print("Validating...")
-    cost = rollout(model, dataset, opts, type="validate")
+    cost, length, reward, penalty = rollout(model, dataset, opts, type="validate")
     avg_cost = cost.mean()
+    avg_length = length.mean()
+    avg_reward = reward.mean()
+    avg_penalty = penalty.mean()
+
     print(
         "Validation overall avg_cost: {} +- {}".format(
             avg_cost, torch.std(cost) / math.sqrt(len(cost))
-        )
+        ),
+        " Validation overall avg_length: {} +- {}".format(
+            avg_length, torch.std(length) / math.sqrt(len(length))
+        ),
+        " Validation overall avg_reward: {} +- {}".format(
+            avg_reward, torch.std(reward) / math.sqrt(len(reward))
+        ),
+        " Validation overall avg_penalty: {} +- {}".format(
+            avg_penalty, torch.std(penalty) / math.sqrt(len(penalty))
+        ),
     )
 
-    return avg_cost
+    return avg_cost, avg_length, avg_reward, avg_penalty
 
 
 def collate_fn(batch):
@@ -48,28 +61,33 @@ def rollout(model, dataset, opts, epoch=0, type="baseline"):
 
     def eval_model_bat(batch_data, graph_batch, batch_id):
         with torch.no_grad():
-            cost, _ = model(
+            cost, length, reward, penalty, _ = model(
                 move_to(batch_data, opts.device),
                 graphs=graph_batch,
                 epoch=batch_id,
                 type=type,
             )
-        return cost.data.cpu()
+        return cost.data.cpu(), length.data.cpu(), reward.data.cpu(), penalty.data.cpu()
 
-    return torch.cat(
-        [
-            eval_model_bat(data_batch, graph_batch, batch_id)
-            for batch_id, (data_batch, graph_batch) in enumerate(
-                tqdm(
-                    DataLoader(
-                        dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
-                    ),
-                    disable=opts.no_progress_bar,
-                )
+    results = [
+        eval_model_bat(data_batch, graph_batch, batch_id)
+        for batch_id, (data_batch, graph_batch) in enumerate(
+            tqdm(
+                DataLoader(
+                    dataset, batch_size=opts.eval_batch_size, collate_fn=collate_fn
+                ),
+                disable=opts.no_progress_bar,
             )
-        ],
-        0,
-    )
+        )
+    ]
+
+    # Transpose results from batch-major to tensor-major
+    transposed_results = list(map(list, zip(*results)))
+
+    # Concatenate each tensor
+    concatenated_tensors = [torch.cat(tensors, 0) for tensors in transposed_results]
+
+    return concatenated_tensors
 
 
 def clip_grad_norms(param_groups, max_norm=math.inf):
@@ -136,7 +154,7 @@ def train_epoch(
     training_dataloader = DataLoader(
         training_dataset,
         batch_size=opts.batch_size,
-        num_workers=1,
+        num_workers=0,
         collate_fn=collate_fn,
     )
 
@@ -183,10 +201,13 @@ def train_epoch(
             os.path.join(opts.save_dir, "epoch-{}.pt".format(epoch)),
         )
 
-    avg_val_cost = validate(model, val_dataset, opts)
+    avg_val_cost, avg_val_length, avg_val_reward, avg_val_penalty = validate(model, val_dataset, opts)
 
     if not opts.no_tensorboard:
         tb_logger["logger"].log_value("avg_val_cost", avg_val_cost, step)
+        tb_logger["logger"].log_value("avg_val_length", avg_val_length, step)
+        tb_logger["logger"].log_value("avg_val_reward", avg_val_reward, step)
+        tb_logger["logger"].log_value("avg_val_penalty", avg_val_penalty, step)
 
     baseline.epoch_callback(model, epoch)
 
@@ -204,7 +225,7 @@ def train_batch(
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 
     # Evaluate model, get costs and log probabilities
-    cost, log_likelihood = model(input=x, graphs=graph_batch, epoch=step, type="train")
+    cost, length, reward, penalty, log_likelihood = model(input=x, graphs=graph_batch, epoch=step, type="train")
 
     # Evaluate baseline, get baseline loss if any (only for critic)
     bl_val, bl_loss = (
@@ -227,6 +248,9 @@ def train_batch(
         log_values(
             model,
             cost,
+            length,
+            reward,
+            penalty,
             grad_norms,
             epoch,
             batch_id,

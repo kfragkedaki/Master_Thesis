@@ -180,10 +180,10 @@ class RolloutBaseline(Baseline):
             self.dataset = dataset
         print("Evaluating baseline model on evaluation dataset")
         self.bl_vals = (
-            rollout(self.model, self.dataset, self.opts, epoch, type="baseline")
+            rollout(self.model, self.dataset, self.opts, epoch, type="baseline")[0]
             .cpu()
             .numpy()
-        )
+        )  # save cost = length + penalty - reward
         self.mean = self.bl_vals.mean()
         self.epoch = epoch
 
@@ -195,7 +195,7 @@ class RolloutBaseline(Baseline):
             dataset,
             rollout(
                 self.model, dataset, self.opts, epoch=self.epoch, type="baseline"
-            ).view(-1, 1),
+            )[0].view(-1, 1),
         )
 
     def unwrap_batch(self, batch):
@@ -220,9 +220,9 @@ class RolloutBaseline(Baseline):
         :param epoch: The current epoch
         """
         print("Evaluating candidate model on evaluation dataset")
-        self.opts.display_graphs = None  # TODO fix!
+        self.opts.display_graphs = None  # data in graphs have changed from the baseline, we need to reset
         candidate_vals = (
-            rollout(model, self.dataset, self.opts, epoch=epoch, type="evaluation")
+            rollout(model, self.dataset, self.opts, epoch=epoch, type="evaluation")[0]
             .cpu()
             .numpy()
         )

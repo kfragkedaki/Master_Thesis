@@ -462,7 +462,7 @@ class GraphDecoderEVRP(GraphDecoder):
         glimpse_K, glimpse_V, logit_K = self._get_attention_node_data(fixed, state)
 
         node_masking = state.get_mask(
-            truck, r_threshold=r_threshold
+            truck
         )  # [batch_size, 1, graph_size]
 
         # Compute logits (unnormalized log_p)  log_p:[batch_size, num_veh, graph_size], glimpse:[batch_size, num_veh, embed_dim]
@@ -543,7 +543,7 @@ class GraphDecoderEVRP(GraphDecoder):
         batch_size, _, embedding_size = embeddings.size()
         device = embeddings.device
 
-        embeddings_extended = torch.cat((embeddings, state.node_trucks), 2)
+        embeddings_extended = torch.cat((embeddings, state.node_charged_trucks), 2)
         trailer_embeddings = embeddings_extended.gather(
             1,
             state.trailers_locations.to(torch.int64).expand(

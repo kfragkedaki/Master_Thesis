@@ -103,6 +103,9 @@ def plot_attention_weights(model, tb_logger, step=0):
 def log_values(
     model,
     cost,
+    length,
+    reward,
+    penalty,
     grad_norms,
     epoch,
     batch_id,
@@ -114,11 +117,15 @@ def log_values(
     opts,
 ):
     avg_cost = cost.mean().item()
+    avg_length = length.mean().item()
+    avg_reward = reward.mean().item()
+    avg_penalty = penalty.mean().item()
+
     grad_norms, grad_norms_clipped = grad_norms
 
     # Log values to screen
     print(
-        "epoch: {}, train_batch_id: {}, avg_cost: {}".format(epoch, batch_id, avg_cost)
+        "epoch: {}, train_batch_id: {}, avg_cost: {}, avg_length: {}".format(epoch, batch_id, avg_cost, avg_length)
     )
 
     print("grad_norm: {}, clipped: {}".format(grad_norms[0], grad_norms_clipped[0]))
@@ -126,6 +133,9 @@ def log_values(
     # Log values to tensorboard
     if not opts.no_tensorboard:
         tb_logger["logger"].log_value("avg_cost", avg_cost, step)
+        tb_logger["logger"].log_value("avg_length", avg_length, step)
+        tb_logger["logger"].log_value("avg_reward", avg_reward, step)
+        tb_logger["logger"].log_value("avg_penalty", avg_penalty, step)
 
         tb_logger["logger"].log_value("actor_loss", reinforce_loss.item(), step)
         tb_logger["logger"].log_value(
@@ -141,11 +151,6 @@ def log_values(
             tb_logger["writer"].add_histogram(
                 f"Parameter: {name}", param.clone().cpu().data.numpy(), epoch
             )
-            gradient = param.clone().cpu().grad
-            if gradient is not None:
-                tb_logger["writer"].add_histogram(
-                    f"Gradient: {name}", gradient.data.numpy(), epoch
-                )
 
         encoder_distance = {
             "input_distance": (
@@ -170,11 +175,16 @@ def log_values(
 
 
     if opts.hyperparameter_tuning:
-        tb_logger["ray"].add_scalar("Average Cost", avg_cost, epoch)
-        tb_logger["ray"].add_scalar("Actor Loss", reinforce_loss.item(), epoch)
+        tb_logger["ray"].add_scalar("avg_length", avg_length, epoch)
+        tb_logger["ray"].add_scalar("avg_cost", avg_cost, epoch)
+        tb_logger["ray"].add_scalar("avg_reward", avg_reward, epoch)
+        tb_logger["ray"].add_scalar("avg_penalty", avg_penalty, epoch)
 
-        tb_logger["ray"].add_scalar("Grad Norm", grad_norms[0], epoch)
-        tb_logger["ray"].add_scalar("Grad Norm Clipped", grad_norms_clipped[0], epoch)
+
+        tb_logger["ray"].add_scalar("actor_loss", reinforce_loss.item(), epoch)
+
+        tb_logger["ray"].add_scalar("grad_norm", grad_norms[0], epoch)
+        tb_logger["ray"].add_scalar("grad_norm_clipped", grad_norms_clipped[0], epoch)
 
         model_ = get_inner_model(model)
         # Log the weights of the model

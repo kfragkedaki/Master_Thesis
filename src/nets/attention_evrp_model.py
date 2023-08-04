@@ -6,6 +6,7 @@ from typing import NamedTuple
 from .graph_encoder import GraphAttentionEncoder
 from .graph_decoder import GraphDecoderEVRP
 from src.graph.evrp_network import EVRPNetwork
+from src.graph.evrp_graph import EVRPGraph
 from src.utils.beam_search import CachedLookup
 
 import os
@@ -53,7 +54,6 @@ class AttentionEVRPModel(nn.Module):
         self.decode_type = None
         self.temp = 1.0
         self.opts = opts
-        self.r_threshold = opts.battery_limit
 
         self.problem = problem  # env
         self.n_heads = n_heads
@@ -80,7 +80,6 @@ class AttentionEVRPModel(nn.Module):
             num_trailers=opts.num_trailers,
             num_trucks=opts.num_trucks,
             features=self.features,
-            r_threshold=opts.battery_limit,
         )
 
     def set_decode_type(self, decode_type, temp=None):
@@ -105,23 +104,23 @@ class AttentionEVRPModel(nn.Module):
         self.epoch = epoch
         self.type = type
 
-        if self.opts.display_graphs:
+        if self.opts.display_graphs and len(graphs) > 0 and isinstance(graphs[0], EVRPGraph):
             self.graphs = EVRPNetwork(
-                num_graphs=graphs[0].num_nodes,
+                num_graphs=len(graphs),
                 num_nodes=graphs[0].num_nodes,
                 num_trucks=graphs[0].num_trucks,
                 num_trailers=graphs[0].num_trailers,
                 truck_names=graphs[0].truck_names,
                 plot_attributes=True,
                 graphs=graphs,
-                r_threshold=self.r_threshold,
+                r_threshold=self.opts.battery_limit,
             )
         else:
             self.graphs = None
 
         mask_non_neighbors = (
                 input["coords"][:, :, None, :] - input["coords"][:, None, :, :]
-            ).norm(p=2, dim=-1) > self.opts.battery_limit # batch_size, graph_size, graph_size
+            ).norm(p=2, dim=-1) > self.opts.battery_limit  # batch_size, graph_size, graph_size
 
         if (
             self.checkpoint_encoder and self.training
@@ -133,8 +132,8 @@ class AttentionEVRPModel(nn.Module):
         self.encoder_data["input"] = input["coords"].detach().cpu()
         self.encoder_data["embeddings"] = embeddings.detach().cpu()
 
-        cost, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(
-            input, embeddings
+        cost, total_distance, reward, penalty, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(
+            input, embeddings, self.opts.battery_limit
         )
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
@@ -143,11 +142,11 @@ class AttentionEVRPModel(nn.Module):
             _log_trailers, _log_trucks, _log_nodes, pi
         )
         if return_pi:
-            return cost, (ll_trailer + ll_truck + ll_node), pi, decision
+            return cost, total_distance, reward, penalty, (ll_trailer + ll_truck + ll_node), pi, decision
 
-        return cost, ll_trailer + ll_truck + ll_node  # tensor(batch_size) both
+        return cost, total_distance, reward, penalty, (ll_trailer + ll_truck + ll_node)  # tensor(batch_size) both
 
-    def step(self, input, embeddings):
+    def step(self, input, embeddings, r_threshold):
         outputs_trailers = []  # [(log_trailer, log_truck, log_node)]
         outputs_trucks = []
         outputs_nodes = []
@@ -156,7 +155,7 @@ class AttentionEVRPModel(nn.Module):
         )  # [(from_node, to_node, truck_id, trailer_id, timestep=i)]
         sequences_trucks = []
         sequences_nodes = []
-        state = self.problem.make_state(input)
+        state = self.problem.make_state(input, r_threshold=r_threshold)
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         fixed = self._precompute(embeddings)
 
@@ -188,11 +187,17 @@ class AttentionEVRPModel(nn.Module):
         # cost = torch.where(
         #     state.force_stop == 1, state.lengths.sum(1) * 2, state.lengths.sum(1)
         # )
-        cost = state.lengths.sum(1)
+        total_distance = state.lengths.sum(1)
+        penalty = state.penalty.squeeze(-1)
+        reward = state.reward.squeeze(-1)
+        cost = state.get_final_cost()
 
         # Collected lists, return Tensor
         return (
             cost,  # (batch_size,)
+            total_distance,  # (batch_size,)
+            reward,  # (batch_size,)
+            penalty,  # (batch_size,)
             state.visited_.transpose(0, 1),  # (5, batch_size, time)
             state.decision,  # (batch_size, 3, time) 3 because (selected_trailer, selected_truck, selected_node)
             torch.stack(outputs_trailers, 1),  # (batch_size, time, trailer_size)
@@ -328,15 +333,16 @@ class AttentionEVRPModel(nn.Module):
     def get_graphs(self, state=None, selected=[]):
         file = self.opts.save_dir + "/graphs/" + self.type + "/" + str(self.epoch)
         name = "initial"
-        if self.opts.display_graphs is not None and self.graphs is not None:
+        if self.opts.display_graphs is not None and self.graphs is not None \
+                and len(self.graphs) > 0 and isinstance(self.graphs[0], EVRPGraph):
+
             if not os.path.exists(file):
                 os.makedirs(file)
 
             if state is not None:
                 name = None
                 self.graphs.clear()
-                edge = self.graphs.visit_edges(tensor_to_tuples(state.visited_))
-                self.graphs.update_attributes(edge)
+                self.graphs.visit_edges(tensor_to_tuples(state.visited_))
 
             self.graphs.draw(
                 graph_idxs=range(self.opts.display_graphs),

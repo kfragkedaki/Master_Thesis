@@ -74,7 +74,7 @@ def get_options(args=None):
     )
     parser.add_argument(
         "--optimizer_class",
-        default="Adam",
+        default="NAdam",
         help="Optimizer class, 'Adam' (default) or 'NAdam' or 'Adamax'",
     )
 
