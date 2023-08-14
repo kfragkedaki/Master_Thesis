@@ -9,6 +9,7 @@ import copy
 import torch
 from src.utils.plot_timeline import get_trailer_colors
 
+
 class EVRPGraph:
     graph: nx.Graph = nx.Graph()
 
@@ -52,22 +53,25 @@ class EVRPGraph:
         self.create_edges()
 
     def calculate_distances(self, input: torch.Tensor):
-        distances = (input[:, None, :] - input[None, :, :]
-                     ).norm(p=2, dim=-1)
+        distances = (input[:, None, :] - input[None, :, :]).norm(p=2, dim=-1)
 
         return distances
 
     def create_edges(self):
-        coords = nx.get_node_attributes(self.graph, 'coordinates')
+        coords = nx.get_node_attributes(self.graph, "coordinates")
 
         # add edges to the graph
-        distance_matrix = self.calculate_distances(torch.tensor(np.array(list(coords.values()))))
+        distance_matrix = self.calculate_distances(
+            torch.tensor(np.array(list(coords.values())))
+        )
         # add edges with weights to the graph
         for i in range(self.num_nodes):
             for j in range(i + 1, self.num_nodes):
                 if distance_matrix[i, j] <= self.r_threshold:
                     self.graph.add_edge(i, j, weight=distance_matrix[i, j])
-                    self.graph.add_edge(j, i, weight=distance_matrix[i, j])  # add the other direction as well
+                    self.graph.add_edge(
+                        j, i, weight=distance_matrix[i, j]
+                    )  # add the other direction as well
 
     def set_default_attributes(
         self,
@@ -90,7 +94,7 @@ class EVRPGraph:
 
         # Node Attributes
         self.graph.add_nodes_from(list(range(self.num_nodes)))
-       
+
         # If data is not provided, generate it
         if coords is None:
             coords = self._compute_coordinates(r_threshold=self.r_threshold)
@@ -285,7 +289,7 @@ class EVRPGraph:
         if self.plot_attributes:
             # colors = plt.cm.rainbow(np.linspace(0, 1, self.num_trailers))
             colors = get_trailer_colors(self.num_trailers + 1)
-            
+
             color = {f"Trailer {i}": colors[i] for i in range(self.num_trailers)}
             color[None] = "black"
 
@@ -294,7 +298,7 @@ class EVRPGraph:
                 (0, (i + 1, self.num_trucks - i)) for i in range(self.num_trucks)
             ]
             style = {
-                f"Truck {truck_names[i]}": styles[i % len(styles)]
+                f"Tractor {truck_names[i]}": styles[i % len(styles)]
                 for i in range(self.num_trucks)
             }
             style[
@@ -326,7 +330,9 @@ class EVRPGraph:
 
             node_trucks_data = nx.get_node_attributes(graph_copy, "trucks")
             node_trucks_labels = {
-                node_id: list(trucks_data.keys())
+                node_id: [
+                    s.replace("Truck", "Tractor") for s in list(trucks_data.keys())
+                ]
                 for (node_id, trucks_data) in node_trucks_data.items()
                 if trucks_data is not None
             }
@@ -369,7 +375,7 @@ class EVRPGraph:
                     )
 
                     data["color"] = color[trailer]
-                    data["style"] = style[truck]
+                    data["style"] = style[truck.replace("Truck", "Tractor")]
                     data["label"] = str(timestamp)
 
             for u, v, key, data in graph_copy.edges(data=True, keys=True):
@@ -591,7 +597,10 @@ class EVRPGraph:
     def get_neighbors(self, cur_node) -> np.ndarray:
         nns = []
         for node in self.graph.nodes():
-            if node != cur_node and self.euclid_distance(cur_node, node) <= self.r_threshold:
+            if (
+                node != cur_node
+                and self.euclid_distance(cur_node, node) <= self.r_threshold
+            ):
                 self.graph.nodes[node]["node_color"] = "lightgray"
                 nns.append(node)
 
@@ -603,7 +612,10 @@ class EVRPGraph:
         nn_edges = []
         for cur_node in self.graph.nodes():
             for node in self.graph.nodes():
-                if node != cur_node and self.euclid_distance(cur_node, node) <= self.r_threshold:
+                if (
+                    node != cur_node
+                    and self.euclid_distance(cur_node, node) <= self.r_threshold
+                ):
                     nn_edges.append((cur_node, node))
 
         self.draw(ax, with_labels)

@@ -9,15 +9,17 @@ import seaborn as sns
 
 
 def get_trailer_colors(size, type="matplotlib"):
-    set3 = plt.get_cmap('Set3')
-    colors = [set3(i) for i in range(size+1)]
+    set3 = plt.get_cmap("Set3")
+    colors = [set3(i) for i in range(size + 1)]
     if size > 1:
         colors[1] = set3(5)  # Replace the 2nd color with the 6th one
 
     if type == "plotly":
-        colors = px.colors.qualitative.Set3[: size+1]
+        colors = px.colors.qualitative.Set3[: size + 1]
         if size > 1:
-            colors[1] = px.colors.qualitative.Set3[5]  # Replace the 2nd color with the 6th one
+            colors[1] = px.colors.qualitative.Set3[
+                5
+            ]  # Replace the 2nd color with the 6th one
 
     return colors
 
@@ -28,7 +30,14 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
     ), "Wrong data type"
 
     df = pd.DataFrame(
-        columns=["Truck", "StartTime", "FinishTime", "StartNode", "EndNode", "Trailer"]
+        columns=[
+            "Tractor",
+            "StartTime",
+            "FinishTime",
+            "StartNode",
+            "EndNode",
+            "Trailer",
+        ]
     )
 
     trailer_names = []
@@ -46,10 +55,15 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
         if trailer not in trailer_names:
             trailer_names.append(trailer)
 
-        trailer_names = sorted(trailer_names, key=lambda x: int(x.split()[1]) if x is not None and x.split()[1]!='None' else float('inf'))
+        trailer_names = sorted(
+            trailer_names,
+            key=lambda x: int(x.split()[1])
+            if x is not None and x.split()[1] != "None"
+            else float("inf"),
+        )
 
         block = dict(
-            Truck=truck,
+            Tractor=truck,
             StartTime=int(time),
             FinishTime=int(time + 1),
             StartNode="Node {}".format(start_node),
@@ -63,9 +77,9 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
     # Generate a categorical color scale based on the unique trailer names
     trailer_colors = get_trailer_colors(len(trailer_names), type="plotly")
     y_data = []
-    for truck, truck_df in df.groupby("Truck"):
+    for truck, truck_df in df.groupby("Tractor"):
         for idx, row in truck_df.iterrows():
-            truck_name = "Truck {} ".format(truck)
+            truck_name = "Tractor {} ".format(truck)
             if truck_name not in y_data:
                 y_data.append(truck_name)
             fig.add_trace(
@@ -84,7 +98,7 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
             )
             fig.add_annotation(
                 x=row["StartTime"],
-                y=truck-0.1,
+                y=truck - 0.1,
                 xref="x",
                 yref="y",
                 showarrow=False,
@@ -94,14 +108,14 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
                 ax=-5,
                 ay=0,
                 text=row["StartNode"],
-                font=dict(size=8),
+                font=dict(size=9),
                 align="center",
                 valign="bottom",
             )
 
             fig.add_annotation(
                 x=row["FinishTime"],
-                y=truck-0.1,
+                y=truck - 0.1,
                 xref="x",
                 yref="y",
                 showarrow=False,
@@ -111,7 +125,7 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
                 ax=-5,
                 ay=0,
                 text=row["EndNode"],
-                font=dict(size=8),
+                font=dict(size=9),
                 align="center",
                 valign="bottom",
             )
@@ -133,17 +147,26 @@ def plot_timeline(data: np.array = [], example_name="example") -> None:
     base_size = 100
     fig.add_traces(legend_data)
     fig.update_layout(
-        # xaxis=dict(range=[df["StartTime"].min() - 0.5, df["FinishTime"].max() + 0.5]), 
-        yaxis=dict(
-            type='category',
-            tickvals=df["Truck"].unique(),
-            ticktext=y_data),
+        # xaxis=dict(range=[df["StartTime"].min() - 0.5, df["FinishTime"].max() + 0.5]),
+        yaxis=dict(type="category", tickvals=df["Tractor"].unique(), ticktext=y_data),
         margin=dict(pad=5),
-        legend=dict(traceorder="normal"), showlegend=True, width=base_size * len(df), height=1.25*base_size * (len(df["Truck"].unique())+1))
-    fig.update_xaxes(title="Steps")
-    fig.update_yaxes(autorange="reversed")  # Tasks listed from top to bottom
+        legend=dict(traceorder="normal", font=dict(size=16)),
+        showlegend=True,
+        width=base_size * len(df),
+        height=1.25 * base_size * (len(df["Tractor"].unique()) + 1),
+    )
+    fig.update_xaxes(
+        title_text="Steps", title_font=dict(size=18), tickfont=dict(size=14)
+    )
+    fig.update_yaxes(
+        autorange="reversed", tickfont=dict(size=14)
+    )  # Tasks listed from top to bottom
     fig.show()
-    fig.write_image(f"../images/evrp/plot_timeline_{example_name}.png", format="png", scale=300/ 25.4)
+    fig.write_image(
+        f"../images/evrp/plot_timeline_{example_name}.png",
+        format="png",
+        scale=300 / 25.4,
+    )
 
 
 if __name__ == "__main__":

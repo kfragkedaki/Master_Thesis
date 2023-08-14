@@ -116,5 +116,5 @@ def get_information_from_dict(input: dict) -> dict:
 
 
 if __name__ == "__main__":
-    result = load_json("src/instances/example.json")
+    result = load_json("../instances/example.json")
     print(result)

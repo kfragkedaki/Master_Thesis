@@ -117,7 +117,9 @@ class EVRPNetwork:
         num_rows = np.ceil(len(graph_idxs) / num_columns).astype(int)
 
         # plot each graph in a 3 x num_rows grid
-        fig, axs = plt.subplots(num_rows, num_columns, figsize=(7 * num_columns, 5.5 * num_rows))
+        fig, axs = plt.subplots(
+            num_rows, num_columns, figsize=(7 * num_columns, 5.5 * num_rows)
+        )
         plt.subplots_adjust(wspace=0.02, hspace=0.02)
 
         # Flatten axs to easily iterate over it
@@ -143,7 +145,7 @@ class EVRPNetwork:
                 axs[col].set_title(
                     txt,
                     loc="right",
-                    fontdict={'fontsize': 14},
+                    fontdict={"fontsize": 14},
                 )
 
         time = selected[-1] if len(selected) > 0 else 0
