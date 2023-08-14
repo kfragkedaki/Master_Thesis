@@ -171,6 +171,6 @@ class Agent:
                 )
                 self.tb_logger["ray"].close()
                 torch.save(model, self.session.get_trial_dir() + "/model.pt")
-            
+
             if not self.opts.no_tensorboard:
                 self.tb_logger["writer"].close()

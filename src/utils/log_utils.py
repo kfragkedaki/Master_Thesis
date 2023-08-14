@@ -125,7 +125,9 @@ def log_values(
 
     # Log values to screen
     print(
-        "epoch: {}, train_batch_id: {}, avg_cost: {}, avg_length: {}".format(epoch, batch_id, avg_cost, avg_length)
+        "epoch: {}, train_batch_id: {}, avg_cost: {}, avg_length: {}".format(
+            epoch, batch_id, avg_cost, avg_length
+        )
     )
 
     print("grad_norm: {}, clipped: {}".format(grad_norms[0], grad_norms_clipped[0]))
@@ -154,12 +156,12 @@ def log_values(
 
         encoder_distance = {
             "input_distance": (
-                    model_.encoder_data["input"][0, :, None, :]
-                    - model_.encoder_data["input"][0, None, :, :]
+                model_.encoder_data["input"][0, :, None, :]
+                - model_.encoder_data["input"][0, None, :, :]
             ).norm(p=2, dim=-1),
             "embedding_distance": (
-                    model_.encoder_data["embeddings"][0, :, None, :]
-                    - model_.encoder_data["embeddings"][0, None, :, :]
+                model_.encoder_data["embeddings"][0, :, None, :]
+                - model_.encoder_data["embeddings"][0, None, :, :]
             ).norm(p=2, dim=-1),
         }
 
@@ -173,13 +175,11 @@ def log_values(
                 "critic_grad_norm_clipped", grad_norms_clipped[1], step
             )
 
-
     if opts.hyperparameter_tuning:
         tb_logger["ray"].add_scalar("avg_length", avg_length, epoch)
         tb_logger["ray"].add_scalar("avg_cost", avg_cost, epoch)
         tb_logger["ray"].add_scalar("avg_reward", avg_reward, epoch)
         tb_logger["ray"].add_scalar("avg_penalty", avg_penalty, epoch)
-
 
         tb_logger["ray"].add_scalar("actor_loss", reinforce_loss.item(), epoch)
 

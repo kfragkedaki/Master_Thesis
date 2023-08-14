@@ -201,7 +201,9 @@ def train_epoch(
             os.path.join(opts.save_dir, "epoch-{}.pt".format(epoch)),
         )
 
-    avg_val_cost, avg_val_length, avg_val_reward, avg_val_penalty = validate(model, val_dataset, opts)
+    avg_val_cost, avg_val_length, avg_val_reward, avg_val_penalty = validate(
+        model, val_dataset, opts
+    )
 
     if not opts.no_tensorboard:
         tb_logger["logger"].log_value("avg_val_cost", avg_val_cost, step)
@@ -225,7 +227,9 @@ def train_batch(
     bl_val = move_to(bl_val, opts.device) if bl_val is not None else None
 
     # Evaluate model, get costs and log probabilities
-    cost, length, reward, penalty, log_likelihood = model(input=x, graphs=graph_batch, epoch=step, type="train")
+    cost, length, reward, penalty, log_likelihood = model(
+        input=x, graphs=graph_batch, epoch=step, type="train"
+    )
 
     # Evaluate baseline, get baseline loss if any (only for critic)
     bl_val, bl_loss = (

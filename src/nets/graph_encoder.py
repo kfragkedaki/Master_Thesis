@@ -154,14 +154,20 @@ class MultiHeadAttentionLayer(nn.Sequential):
     ):
         super(MultiHeadAttentionLayer, self).__init__()
 
-        self.attention = SkipConnection(MultiHeadAttention(num_heads, input_dim=embed_dim, embed_dim=embed_dim))
+        self.attention = SkipConnection(
+            MultiHeadAttention(num_heads, input_dim=embed_dim, embed_dim=embed_dim)
+        )
         self.bn1 = Normalization(embed_dim, normalization)
         self.bn2 = Normalization(embed_dim, normalization)
-        self.ff = SkipConnection(nn.Sequential(
+        self.ff = SkipConnection(
+            nn.Sequential(
                 nn.Linear(embed_dim, feed_forward_hidden),
                 nn.ReLU(),
                 nn.Linear(feed_forward_hidden, embed_dim),
-            ) if feed_forward_hidden > 0 else nn.Linear(embed_dim, embed_dim))
+            )
+            if feed_forward_hidden > 0
+            else nn.Linear(embed_dim, embed_dim)
+        )
 
     def forward(self, input, mask=None):
         # Pass mask to the MultiHeadAttention

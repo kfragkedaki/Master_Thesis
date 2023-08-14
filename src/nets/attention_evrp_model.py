@@ -104,7 +104,11 @@ class AttentionEVRPModel(nn.Module):
         self.epoch = epoch
         self.type = type
 
-        if self.opts.display_graphs and len(graphs) > 0 and isinstance(graphs[0], EVRPGraph):
+        if (
+            self.opts.display_graphs
+            and len(graphs) > 0
+            and isinstance(graphs[0], EVRPGraph)
+        ):
             self.graphs = EVRPNetwork(
                 num_graphs=len(graphs),
                 num_nodes=graphs[0].num_nodes,
@@ -119,22 +123,34 @@ class AttentionEVRPModel(nn.Module):
             self.graphs = None
 
         mask_non_neighbors = (
-                input["coords"][:, :, None, :] - input["coords"][:, None, :, :]
-            ).norm(p=2, dim=-1) > self.opts.battery_limit  # batch_size, graph_size, graph_size
+            input["coords"][:, :, None, :] - input["coords"][:, None, :, :]
+        ).norm(
+            p=2, dim=-1
+        ) > self.opts.battery_limit  # batch_size, graph_size, graph_size
 
         if (
             self.checkpoint_encoder and self.training
         ):  # Only checkpoint if we need gradients
-            embeddings = checkpoint(self.encoder, self._init_embed(input), mask_non_neighbors)
+            embeddings = checkpoint(
+                self.encoder, self._init_embed(input), mask_non_neighbors
+            )
         else:
             embeddings = self.encoder(self._init_embed(input), mask=mask_non_neighbors)
 
         self.encoder_data["input"] = input["coords"].detach().cpu()
         self.encoder_data["embeddings"] = embeddings.detach().cpu()
 
-        cost, total_distance, reward, penalty, pi, decision, _log_trailers, _log_trucks, _log_nodes = self.step(
-            input, embeddings, self.opts.battery_limit
-        )
+        (
+            cost,
+            total_distance,
+            reward,
+            penalty,
+            pi,
+            decision,
+            _log_trailers,
+            _log_trucks,
+            _log_nodes,
+        ) = self.step(input, embeddings, self.opts.battery_limit)
         # cost, mask = self.problem.get_costs(input, pi_node)
         # Log likelyhood is calculated within the model since returning it per action does not work well with
         # DataParallel since sequences can be of different lengths
@@ -142,9 +158,23 @@ class AttentionEVRPModel(nn.Module):
             _log_trailers, _log_trucks, _log_nodes, pi
         )
         if return_pi:
-            return cost, total_distance, reward, penalty, (ll_trailer + ll_truck + ll_node), pi, decision
+            return (
+                cost,
+                total_distance,
+                reward,
+                penalty,
+                (ll_trailer + ll_truck + ll_node),
+                pi,
+                decision,
+            )
 
-        return cost, total_distance, reward, penalty, (ll_trailer + ll_truck + ll_node)  # tensor(batch_size) both
+        return (
+            cost,
+            total_distance,
+            reward,
+            penalty,
+            (ll_trailer + ll_truck + ll_node),
+        )  # tensor(batch_size) both
 
     def step(self, input, embeddings, r_threshold):
         outputs_trailers = []  # [(log_trailer, log_truck, log_node)]
@@ -333,9 +363,12 @@ class AttentionEVRPModel(nn.Module):
     def get_graphs(self, state=None, selected=[]):
         file = self.opts.save_dir + "/graphs/" + self.type + "/" + str(self.epoch)
         name = "initial"
-        if self.opts.display_graphs is not None and self.graphs is not None \
-                and len(self.graphs) > 0 and isinstance(self.graphs[0], EVRPGraph):
-
+        if (
+            self.opts.display_graphs is not None
+            and self.graphs is not None
+            and len(self.graphs) > 0
+            and isinstance(self.graphs[0], EVRPGraph)
+        ):
             if not os.path.exists(file):
                 os.makedirs(file)
 

@@ -193,9 +193,9 @@ class RolloutBaseline(Baseline):
         # https://discuss.pytorch.org/t/dataloader-gives-double-instead-of-float/717/3
         return BaselineDataset(
             dataset,
-            rollout(
-                self.model, dataset, self.opts, epoch=self.epoch, type="baseline"
-            )[0].view(-1, 1),
+            rollout(self.model, dataset, self.opts, epoch=self.epoch, type="baseline")[
+                0
+            ].view(-1, 1),
         )
 
     def unwrap_batch(self, batch):
@@ -220,7 +220,9 @@ class RolloutBaseline(Baseline):
         :param epoch: The current epoch
         """
         print("Evaluating candidate model on evaluation dataset")
-        self.opts.display_graphs = None  # data in graphs have changed from the baseline, we need to reset
+        self.opts.display_graphs = (
+            None  # data in graphs have changed from the baseline, we need to reset
+        )
         candidate_vals = (
             rollout(model, self.dataset, self.opts, epoch=epoch, type="evaluation")[0]
             .cpu()
