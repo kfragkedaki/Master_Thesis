@@ -384,9 +384,9 @@ class EVRPGraph:
                     pos_target = pos[v]
 
                     if key % 2 == 0:
-                        offset = 0.05
+                        offset = 0.15
                     else:
-                        offset = -0.05
+                        offset = -0.15
 
                     x_control, y_control = self.bezier_control_point(
                         pos_source, pos_target, offset
@@ -685,6 +685,16 @@ if __name__ == "__main__":
 
         G.clear()
         G.visit_edges([edge])
+        # edges = G.visit_edges([edge])
+        # G.draw(ax=ax, with_labels=True)
+        # ax.set_aspect("equal")
+        # ax.set_xlim([-0.7, 1.3])
+        # ax.set_ylim([-0.7, 1.3])
+        # plt.show()
+
+        # fig, ax = plt.subplots()
+
+        # G.update_attributes(edges[-1])
         G.draw(ax=ax, with_labels=True)
         ax.set_aspect("equal")
         ax.set_xlim([-0.7, 1.3])
